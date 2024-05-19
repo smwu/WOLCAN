@@ -1,17 +1,21 @@
-#=================================================
+#======================================================
 # Create pseudo-weights and run WOLCA model
+# Simplified logistic regression and known pi_R setting
 # Author: Stephanie Wu
 # Date created: 2024/04/16
 # Date updated: 2024/04/16
-#=================================================
+#======================================================
 
 library(BART)
 library(baysc)
 library(abind)
-wd <- "~/Documents/GitHub/npswolca/"  # working directory
+wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
+data_dir <- "Data/"                 # Data directory
+res_dir <- "Results/"               # Results directory
+code_dir <- "Model_Code/"           # Model code directory
 set.seed(1)
 
-load("sim_pop_simple_wolca.RData")
+load(paste0(wd, data_dir, "sim_pop_simple_wolca.RData"))
 
 # Scenario settings
 num_post <- 300
@@ -39,8 +43,8 @@ for (i in 1:10) {
 
 run_samp <- function(i, N, num_post, pred_covs_R, pred_covs_B, frame_R, frame_B,
                      pi_R_known = FALSE) {
-  load(paste0(wd, "sim_samp_simple", i, "_B_wolca.RData"))
-  load(paste0(wd, "sim_samp_simple", i, "_R_wolca.RData"))
+  load(paste0(wd, data_dir, "sim_samp_simple", i, "_B_wolca.RData"))
+  load(paste0(wd, data_dir, "sim_samp_simple", i, "_R_wolca.RData"))
   
   dat_B <- data.frame(sim_samp_B$covs)
   dat_R <- data.frame(sim_samp_R$covs)
@@ -69,24 +73,27 @@ run_samp <- function(i, N, num_post, pred_covs_R, pred_covs_B, frame_R, frame_B,
   res <- wolca(x_mat = X_data, sampling_wt = wts, cluster_id = NULL, 
                stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
                class_cutoff = 0.05, n_runs = 10000, burn = 5000, thin = 5, 
-               update = 5000, save_res = TRUE, save_path = paste0(wd, "test", i))
+               update = 5000, save_res = TRUE, 
+               save_path = paste0(wd, res_dir, "test", i))
   res$data_vars$cluster_id <- 1:nrow(X_data)
   res_adj <- var_adjust(res = res, wts_post = wts_post, 
-                        save_res = TRUE, save_path = paste0(wd, "test_adj", i))
+                        save_res = TRUE, 
+                        save_path = paste0(wd, res_dir, "test_adj", i))
   # res_adj <- wolca_var_adjust(res = res, num_reps = 100, save_res = FALSE)
   
   res_unwt <- wolca(x_mat = X_data, sampling_wt = rep(1, nrow(X_data)), cluster_id = NULL, 
                     stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
                     class_cutoff = 0.05, n_runs = 10000, burn = 5000, thin = 5, 
-                    update = 5000, save_res = TRUE, save_path = paste0(wd, "test_unwt", i))
+                    update = 5000, save_res = TRUE, 
+                    save_path = paste0(wd, res_dir, "test_unwt", i))
   
   # res_true <- wolca(x_mat = X_data, sampling_wt = (1/sim_samp_B$true_pi_B), 
   #                   cluster_id = 1:nrow(X_data), 
   #                   stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
   #                   class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
-  #                   update = 5000, save_res = TRUE, save_path = paste0(wd, "test_true", i))
+  #                   update = 5000, save_res = TRUE, save_path = paste0(wd, res_dir, "test_true", i))
   # res_true <- wolca_var_adjust(res = res_true, save_res = TRUE, 
-  #                              save_path = paste0(wd, "test_true_adj", i))
+  #                              save_path = paste0(wd, res_dir, "test_true_adj", i))
   
   # summ_unadj <- get_summ_stats(res = res, res_true = res_true)
   # summ_adj <- get_summ_stats(res = res_adj, res_true = res_true)
@@ -220,8 +227,8 @@ pi_R_known <- TRUE
 run_samp2 <- function(i, N, num_post, pred_covs_R, pred_covs_B, frame_R, frame_B,
                      pi_R_known = FALSE, n_runs = 10000, burn = 5000, thin = 5, 
                      update = 5000, D = 10) {
-  load(paste0(wd, "sim_samp_simple", i, "_B_wolca.RData"))
-  load(paste0(wd, "sim_samp_simple", i, "_R_wolca.RData"))
+  load(paste0(wd, data_dir, "sim_samp_simple", i, "_B_wolca.RData"))
+  load(paste0(wd, data_dir, "sim_samp_simple", i, "_R_wolca.RData"))
   
   dat_B <- data.frame(sim_samp_B$covs)
   dat_R <- data.frame(sim_samp_R$covs)

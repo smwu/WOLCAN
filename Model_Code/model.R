@@ -7,10 +7,13 @@
 
 library(BART)
 library(baysc)
-wd <- "~/Documents/GitHub/npswolca/"  # working directory
+wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
+data_dir <- "Data/"                 # Data directory
+res_dir <- "Results/"               # Results directory
+code_dir <- "Model_Code/"           # Model code directory
 set.seed(1)
 
-load("sim_pop_wolca.RData")
+load(paste0(wd, data_dir, "sim_pop_wolca.RData"))
 
 i <- 1
 for (i in 1:10) {
@@ -20,8 +23,8 @@ for (i in 1:10) {
 
 
 run_samp <- function(i, N) {
-  load(paste0(wd, "sim_samp", i, "_B_wolca.RData"))
-  load(paste0(wd, "sim_samp", i, "_R_wolca.RData"))
+  load(paste0(wd, data_dir, "sim_samp", i, "_B_wolca.RData"))
+  load(paste0(wd, data_dir, "sim_samp", i, "_R_wolca.RData"))
   
   dat_B <- data.frame(sim_samp_B$covs)
   dat_R <- data.frame(sim_samp_R$covs)
@@ -48,24 +51,27 @@ run_samp <- function(i, N) {
   res <- wolca(x_mat = X_data, sampling_wt = weights1, cluster_id = NULL, 
                stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
                class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
-               update = 5000, save_res = TRUE, save_path = paste0(wd, "test", i))
+               update = 5000, save_res = TRUE, 
+               save_path = paste0(wd, res_dir, "test", i))
   res$data_vars$cluster_id <- 1:nrow(X_data)
   res_adj <- var_adjust(res = res, wts_post = wts_post, num_reps = 100, 
-                            save_res = TRUE, save_path = paste0(wd, "test_adj", i))
+                        save_res = TRUE, 
+                        save_path = paste0(wd, res_dir, "test_adj", i))
   # res_adj <- wolca_var_adjust(res = res, num_reps = 100, save_res = FALSE)
   
   res_unwt <- wolca(x_mat = X_data, sampling_wt = rep(1, nrow(X_data)), cluster_id = NULL, 
                     stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
                     class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
-                    update = 5000, save_res = TRUE, save_path = paste0(wd, "test_unwt", i))
+                    update = 5000, save_res = TRUE, 
+                    save_path = paste0(wd, res_dir, "test_unwt", i))
   
   # res_true <- wolca(x_mat = X_data, sampling_wt = (1/sim_samp_B$true_pi_B), 
   #                   cluster_id = 1:nrow(X_data), 
   #                   stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
   #                   class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
-  #                   update = 5000, save_res = TRUE, save_path = paste0(wd, "test_true", i))
+  #                   update = 5000, save_res = TRUE, save_path = paste0(wd, res_dir, "test_true", i))
   # res_true <- wolca_var_adjust(res = res_true, save_res = TRUE, 
-  #                              save_path = paste0(wd, "test_true_adj", i))
+  #                              save_path = paste0(wd, res_dir, "test_true_adj", i))
   
   # summ_unadj <- get_summ_stats(res = res, res_true = res_true)
   # summ_adj <- get_summ_stats(res = res_adj, res_true = res_true)
@@ -485,113 +491,113 @@ get_summ_stats <- function(res, res_true = NULL) {
 
 
 #====================== OLD CODE ===============================================
-library(BART)
-library(baysc)
-wd <- "~/Documents/GitHub/npswolca/"  # working directory
-set.seed(1)
-
-i <- 1
-load(paste0(wd, "sim_samp", i, "_B_wolca.RData"))
-load(paste0(wd, "sim_samp", i, "_R_wolca.RData"))
-
-dat_B <- data.frame(sim_samp_B$covs)
-dat_R <- data.frame(sim_samp_R$covs)
-num_post <- 100
-pred_covs_R <- c("A1", "A2", "A1A2", "logA2")
-pred_covs_B <- c("A1", "A2", "A1A2", "logA2")
-frame_R <- 1
-frame_B <- 1
-
-# Number of overlapping individuals
-length(intersect(sim_samp_R$ind_R, sim_samp_B$ind_B))
-
-
-# Create stacked sample
-n0 <- nrow(dat_R)
-n1 <- nrow(dat_B)
-samp_comb <- rbind(dat_B, dat_R)
-# Get known sampling probabilities for i in S_R
-pi_R <- sim_samp_R$pi_R
-logit_pi_R <- log(pi_R / (1 - pi_R))
-# Indicator for NPS given inclusion in stacked sample
-z <- rep(1:0, c(n1, n0))
-# Predict logit(pi_R) for i in S_B
-# Change so that it only predicts for those in S_B rather than all
-fit_pi_R <- wbart(x.train = samp_comb[z == 0, pred_covs_R, drop = FALSE], 
-                  y.train = logit_pi_R, 
-                  x.test = samp_comb[z == 1, pred_covs_R, drop = FALSE],
-                  ntree = 50L, nskip = 100L, ndpost = num_post) 
-hat_logit_pi_R <- fit_pi_R$yhat.test.mean
-# Convert to pi_R scale using expit
-hat_pi_R <- exp(hat_logit_pi_R) / (1 + exp(hat_logit_pi_R))
-# Check predicted pi_R against true pi_R 
-hat_pi_R[1:5]
-sim_samp_B$true_pi_R[1:5]
-# Get distribution of hat_pi_R
-hat_logit_pi_R_dist <- fit_pi_R$yhat.test
-hat_pi_R_dist <- exp(hat_logit_pi_R_dist) / (1 + exp(hat_logit_pi_R_dist))
-
-# Predict pi_B for i in S_B
-fit_pi_B <- pbart(x.train = samp_comb[, pred_covs_B, drop = FALSE],
-                  y.train = z, ntree = 50L, nskip = 100L, ndpost = num_post)
-hat_pi_z <- fit_pi_B$prob.train.mean
-hat_pi_B <- hat_pi_z[z == 1] * hat_pi_R * frame_R / 
-  (frame_B * (1 - hat_pi_z[z == 1]))
-# Check predicted pi_B against true pi_B
-hat_pi_B[1:5]
-sim_samp_B$true_pi_B[1:5]
-# Get distribution of hat_pi_B, incorporating distribution of hat_pi_R
-hat_pi_z_dist <- fit_pi_B$prob.train
-hat_pi_B_dist <- matrix(NA, nrow = num_post, ncol = n1)
-# hat_pi_B_dist <- vector(mode = "list", length = num_post)
-for (m in 1:num_post) {
-  pi_z_m <- hat_pi_z_dist[m, ]
-  pi_B_m <- pi_z_m[z == 1] * hat_pi_R_dist[m, ] * frame_R / 
-    (frame_B * (1 - pi_z_m[z == 1]))
-  # Restrict to [0, 1]
-  hat_pi_B_dist[m, ] <- sapply(1:n1, function(x) max(min(pi_B_m[x], 1), 0))
-}
-# Example plot for individual 1
-hist(hat_pi_B_dist[, 1], breaks = 30)
-abline(v = hat_pi_B[1], col = "red", lwd = 2)
-abline(v = sim_samp_B$true_pi_B[1], col = "forestgreen", lwd = 2)
-
-# Form pseudo-weights
-weights <- numeric(length = nrow(samp_comb))
-weights[z == 1] <- 1 / hat_pi_B
-weights[z == 0] <- 1 / pi_R
-weights1 <- weights[z == 1]
-
-# Normalize weights to sum to N
-pi_B_m <- pi_B_m * N / sum(1 / pi_B_m)
-
-### Get distribution of weights for variance estimation
-wts_post <- t(1 / hat_pi_B_dist)
-# Normalize to sum to sample size
-wts_post <- apply(wts_post, 2, function(x) x / sum(x / n1))
-range(wts_post)
-range(res$data_vars$w_all)
-
-### Weight trimming
-weights1 <- trimw(weights1, m = "t1", c = 10, max = 10)
-wts_post <- apply(wts_post, 2, function(x) trimw(x, m = "t1", c = 10, max = 10)) 
-
-### Run WOLCA model
-X_data <- sim_samp_B$X_data
-res <- wolca(x_mat = X_data, sampling_wt = weights1, cluster_id = NULL, 
-             stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
-             class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
-             update = 100, save_res = TRUE, save_path = paste0(wd, "test"))
-res$data_vars$cluster_id <- 1:425
-res_adj <- wolca_var_adjust(res = res, num_reps = 100, save_res = FALSE)
-
-res_unwt <- wolca(x_mat = X_data, sampling_wt = rep(1, nrow(X_data)), cluster_id = NULL, 
-                  stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
-                  class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
-                  update = 100, save_res = TRUE, save_path = paste0(wd, "test_unwt"))
-
-res_true <- wolca(x_mat = X_data, sampling_wt = (1/sim_samp_B$true_pi_B), 
-                  cluster_id = NULL, 
-                  stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
-                  class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
-                  update = 100, save_res = TRUE, save_path = paste0(wd, "test_true"))
+# library(BART)
+# library(baysc)
+# wd <- "~/Documents/GitHub/npswolca/"  # working directory
+# set.seed(1)
+# 
+# i <- 1
+# load(paste0(wd, "sim_samp", i, "_B_wolca.RData"))
+# load(paste0(wd, "sim_samp", i, "_R_wolca.RData"))
+# 
+# dat_B <- data.frame(sim_samp_B$covs)
+# dat_R <- data.frame(sim_samp_R$covs)
+# num_post <- 100
+# pred_covs_R <- c("A1", "A2", "A1A2", "logA2")
+# pred_covs_B <- c("A1", "A2", "A1A2", "logA2")
+# frame_R <- 1
+# frame_B <- 1
+# 
+# # Number of overlapping individuals
+# length(intersect(sim_samp_R$ind_R, sim_samp_B$ind_B))
+# 
+# 
+# # Create stacked sample
+# n0 <- nrow(dat_R)
+# n1 <- nrow(dat_B)
+# samp_comb <- rbind(dat_B, dat_R)
+# # Get known sampling probabilities for i in S_R
+# pi_R <- sim_samp_R$pi_R
+# logit_pi_R <- log(pi_R / (1 - pi_R))
+# # Indicator for NPS given inclusion in stacked sample
+# z <- rep(1:0, c(n1, n0))
+# # Predict logit(pi_R) for i in S_B
+# # Change so that it only predicts for those in S_B rather than all
+# fit_pi_R <- wbart(x.train = samp_comb[z == 0, pred_covs_R, drop = FALSE], 
+#                   y.train = logit_pi_R, 
+#                   x.test = samp_comb[z == 1, pred_covs_R, drop = FALSE],
+#                   ntree = 50L, nskip = 100L, ndpost = num_post) 
+# hat_logit_pi_R <- fit_pi_R$yhat.test.mean
+# # Convert to pi_R scale using expit
+# hat_pi_R <- exp(hat_logit_pi_R) / (1 + exp(hat_logit_pi_R))
+# # Check predicted pi_R against true pi_R 
+# hat_pi_R[1:5]
+# sim_samp_B$true_pi_R[1:5]
+# # Get distribution of hat_pi_R
+# hat_logit_pi_R_dist <- fit_pi_R$yhat.test
+# hat_pi_R_dist <- exp(hat_logit_pi_R_dist) / (1 + exp(hat_logit_pi_R_dist))
+# 
+# # Predict pi_B for i in S_B
+# fit_pi_B <- pbart(x.train = samp_comb[, pred_covs_B, drop = FALSE],
+#                   y.train = z, ntree = 50L, nskip = 100L, ndpost = num_post)
+# hat_pi_z <- fit_pi_B$prob.train.mean
+# hat_pi_B <- hat_pi_z[z == 1] * hat_pi_R * frame_R / 
+#   (frame_B * (1 - hat_pi_z[z == 1]))
+# # Check predicted pi_B against true pi_B
+# hat_pi_B[1:5]
+# sim_samp_B$true_pi_B[1:5]
+# # Get distribution of hat_pi_B, incorporating distribution of hat_pi_R
+# hat_pi_z_dist <- fit_pi_B$prob.train
+# hat_pi_B_dist <- matrix(NA, nrow = num_post, ncol = n1)
+# # hat_pi_B_dist <- vector(mode = "list", length = num_post)
+# for (m in 1:num_post) {
+#   pi_z_m <- hat_pi_z_dist[m, ]
+#   pi_B_m <- pi_z_m[z == 1] * hat_pi_R_dist[m, ] * frame_R / 
+#     (frame_B * (1 - pi_z_m[z == 1]))
+#   # Restrict to [0, 1]
+#   hat_pi_B_dist[m, ] <- sapply(1:n1, function(x) max(min(pi_B_m[x], 1), 0))
+# }
+# # Example plot for individual 1
+# hist(hat_pi_B_dist[, 1], breaks = 30)
+# abline(v = hat_pi_B[1], col = "red", lwd = 2)
+# abline(v = sim_samp_B$true_pi_B[1], col = "forestgreen", lwd = 2)
+# 
+# # Form pseudo-weights
+# weights <- numeric(length = nrow(samp_comb))
+# weights[z == 1] <- 1 / hat_pi_B
+# weights[z == 0] <- 1 / pi_R
+# weights1 <- weights[z == 1]
+# 
+# # Normalize weights to sum to N
+# pi_B_m <- pi_B_m * N / sum(1 / pi_B_m)
+# 
+# ### Get distribution of weights for variance estimation
+# wts_post <- t(1 / hat_pi_B_dist)
+# # Normalize to sum to sample size
+# wts_post <- apply(wts_post, 2, function(x) x / sum(x / n1))
+# range(wts_post)
+# range(res$data_vars$w_all)
+# 
+# ### Weight trimming
+# weights1 <- trimw(weights1, m = "t1", c = 10, max = 10)
+# wts_post <- apply(wts_post, 2, function(x) trimw(x, m = "t1", c = 10, max = 10)) 
+# 
+# ### Run WOLCA model
+# X_data <- sim_samp_B$X_data
+# res <- wolca(x_mat = X_data, sampling_wt = weights1, cluster_id = NULL, 
+#              stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
+#              class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
+#              update = 100, save_res = TRUE, save_path = paste0(wd, "test"))
+# res$data_vars$cluster_id <- 1:425
+# res_adj <- wolca_var_adjust(res = res, num_reps = 100, save_res = FALSE)
+# 
+# res_unwt <- wolca(x_mat = X_data, sampling_wt = rep(1, nrow(X_data)), cluster_id = NULL, 
+#                   stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
+#                   class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
+#                   update = 100, save_res = TRUE, save_path = paste0(wd, "test_unwt"))
+# 
+# res_true <- wolca(x_mat = X_data, sampling_wt = (1/sim_samp_B$true_pi_B), 
+#                   cluster_id = NULL, 
+#                   stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
+#                   class_cutoff = 0.05, n_runs = 20000, burn = 10000, thin = 5, 
+#                   update = 100, save_res = TRUE, save_path = paste0(wd, "test_true"))

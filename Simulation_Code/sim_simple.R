@@ -1,5 +1,6 @@
 #=================================================
 # Generate population and sample data for NPSWOLCA
+# Simplified logistic regression setting
 # Author: Stephanie Wu
 # Date created: 2024/04/16
 # Date updated: 2024/04/16
@@ -9,7 +10,10 @@ rm(list = ls())
 
 library(MASS)  # multivariate normal distribution
 library(baysc)  # swolca and data generation
-wd <- "~/Documents/GitHub/npswolca/"  # working directory
+wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
+data_dir <- "Data/"                 # Data directory
+res_dir <- "Results/"               # Results directory
+code_dir <- "Simulation_Code/"      # Simulation code directory
 
 set.seed(1)
 
@@ -115,11 +119,11 @@ sim_pop <- list(A1 = pop$A1, A2 = pop$A2, A12 = pop$A12, A1A2 = pop$A1A2,
                 true_global_thetas = true_global_thetas, 
                 true_global_patterns = true_global_patterns)
 
-save(sim_pop, file = paste0(wd, "sim_pop_simple_wolca.RData"))
+save(sim_pop, file = paste0(wd, data_dir, "sim_pop_simple_wolca.RData"))
 
 #================== Generate samples ===========================================
 ### Create samples
-load(paste0(wd, "sim_pop_simple_wolca.RData"))
+load(paste0(wd, data_dir, "sim_pop_simple_wolca.RData"))
 
 num_samps <- 10
 
@@ -164,7 +168,7 @@ for (i in 1:num_samps) {
   cat("wt_B", sum(1 / sim_samp_B$true_pi_B), "\n")
   cat("wt_R", sum(1 / sim_samp_R$true_pi_R), "\n")
   
-  save(sim_samp_B, file = paste0(wd, "sim_samp_simple", i, "_B_wolca.RData"))
-  save(sim_samp_R, file = paste0(wd, "sim_samp_simple", i, "_R_wolca.RData"))
+  save(sim_samp_B, file = paste0(wd, data_dir, "sim_samp_simple", i, "_B_wolca.RData"))
+  save(sim_samp_R, file = paste0(wd, data_dir, "sim_samp_simple", i, "_R_wolca.RData"))
 }
 
