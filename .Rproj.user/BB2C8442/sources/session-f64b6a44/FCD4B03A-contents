@@ -1,0 +1,211 @@
+#========================================================================
+# Standardize variable names and merge full IAT datasets from 2009 - 2019
+# Authors: C. Rodriguez, S.M. Wu
+# Date Created: 2023/06/13
+# Date Updated: 2023/10/5
+# Datasets used: 
+#   iat_15.RData: 2015 IAT data
+#   iat_19_RData: 2019 IAT data
+#   iat_full_09_11.RData: remaining IAT data from 2009-2018
+# Output:
+#   iat_datasubsets.RData: IAT data from 2009 - 2019 after
+# selecting variables of interest
+#=========================================================================
+
+library(tidyverse)
+library(lubridate)
+
+# Specify directories
+wd <- "/Users/Stephanie/Library/CloudStorage/OneDrive-HarvardUniversity/Bias2/Data/"
+code_dir <- "IAT - Explicit/Full data/R files/"
+data_dir <- "IAT - Explicit/Full data/Datasets/"
+setwd(wd)
+
+iat_all_subsets <- readRDS(paste0(wd, data_dir, "iat_datasubsets.RData"))
+
+#FORGOT TO ADD YEAR--NEED TO ADD AS NEW VAR
+
+#----Look at datasets one by one----
+##-fix later to loop
+
+## IAT 2009
+iat09<- iat_all_subsets[["09"]]
+str(iat09)
+
+#Remove obs missing D-scores
+iat09<-iat09 %>% filter(!is.na(D_biep.White_Good_all))
+iat09<-iat09 %>% rename(d_score = D_biep.White_Good_all)
+iat09<-iat09 %>%  mutate(year = 2009)
+
+
+
+## IAT 2010
+iat10<- iat_all_subsets[["10"]]
+str(iat10)
+
+#Remove obs missing D-scores
+iat10<-iat10 %>% filter(!is.na(D_biep.White_Good_all))
+iat10<-iat10 %>% rename(d_score = D_biep.White_Good_all)
+iat10<-iat10 %>%  mutate(year = 2010)
+
+
+## IAT 2011
+iat11<- iat_all_subsets[["11"]]
+str(iat11)
+
+#Remove obs missing D-scores
+iat11<-iat11 %>% filter(!is.na(D_biep.White_Good_all))
+iat11<-iat11 %>% rename(d_score = D_biep.White_Good_all)
+iat11<-iat11 %>%  mutate(year = 2011)
+
+
+## IAT 2012
+iat12<- iat_all_subsets[["12"]]
+str(iat12)
+
+#Remove obs missing D-scores
+iat12<-iat12 %>% filter(!is.na(D_biep.White_Good_all))
+iat12<-iat12 %>% rename(d_score = D_biep.White_Good_all)
+iat12<-iat12 %>%  mutate(year = 2012)
+
+## IAT 2013
+iat13<- iat_all_subsets[["13"]]
+str(iat13)
+
+#Remove obs missing D-scores
+iat13<-iat13 %>% filter(!is.na(D_biep.White_Good_all))
+iat13<-iat13 %>% rename(d_score = D_biep.White_Good_all)
+iat13<-iat13 %>%  mutate(year = 2013)
+
+## IAT 2014
+iat14<- iat_all_subsets[["14"]]
+str(iat14)
+
+#Remove obs missing D-scores
+iat14<-iat14 %>% filter(!is.na(D_biep.White_Good_all))
+iat14<-iat14 %>% rename(d_score = D_biep.White_Good_all)
+iat14<-iat14 %>%  mutate(year = 2014)
+
+## IAT 2015
+iat15<- iat_all_subsets[["15"]]
+str(iat15)
+
+#Remove obs missing D-scores
+iat15<-iat15 %>% filter(!is.na(D_biep.White_Good_all))
+iat15<-iat15 %>% rename(d_score = D_biep.White_Good_all)
+iat15<-iat15 %>%  mutate(year = 2015)
+
+##Need to create age variable, sex variable
+table(iat15$sex)
+table(iat15$sex_5) #this is a more detailed sex variable includes:1 "Male" 2 "Female" 3 "Transgender, MTF" 4 "Transgender FTM" 5 "Other"- we dont need it
+#Since we have age, we can remove birthmonth and birthyear
+
+#iat15<-subset(iat15, select = -c(sex_5, birthmonth, birthyear, employment))
+
+## IAT 2016
+iat16<- iat_all_subsets[["16"]]
+str(iat16)
+
+#Remove obs missing D-scores
+iat16<-iat16 %>% filter(!is.na(D_biep.White_Good_all))
+iat16<-iat16 %>% rename(d_score = D_biep.White_Good_all,
+                        occupation = occupation_self_002)
+iat16<-iat16 %>%  mutate(year = 2016)
+
+table(iat16$birthsex)
+
+iat16<-iat16 %>% mutate(sex = case_when(
+  birthsex == 1 ~ "m",
+  birthsex == 2 ~ "f",
+  TRUE ~ NA))
+table(iat16$sex)
+iat16<-subset(iat16, select = -c(genderidentity, birthsex))
+
+
+#These variables have a mix of numeric and letter values -- we'll convert to char for merging purposes
+table(iat16$countryres)
+table(iat16$countrycit)
+
+iat16$countrycit<-as.character(iat16$countrycit)
+iat16$countryres<-as.character(iat16$countryres)
+
+
+## IAT 2017
+iat17<- iat_all_subsets[["17"]]
+str(iat17)
+
+#Remove obs missing D-scores
+iat17<-iat17 %>% filter(!is.na(D_biep.White_Good_all))
+iat17<-iat17 %>% rename(d_score = D_biep.White_Good_all,
+                        occupation = occupation_self_002)
+iat17<-iat17 %>%  mutate(year = 2017,
+                         countryres = as.character(countryres_num),
+                         countrycit = as.character(countrycit_num),
+                         dob = make_date(year= birthyear, month = birthmonth, day = 1),
+                         age = as.integer(interval(dob, today())/ years(1)),
+                         sex = case_when(
+                           birthsex == 1 ~ "m",
+                           birthsex == 2 ~ "f",
+                           TRUE ~ NA))
+#iat17 %>% filter(age > 90) %>% select(age, dob, birthmonth, birthyear)
+
+## IAT 2018
+iat18<- iat_all_subsets[["18"]]
+str(iat18)
+
+#Remove obs missing D-scores
+iat18<-iat18 %>% filter(!is.na(D_biep.White_Good_all))
+iat18<-iat18 %>% rename(d_score = D_biep.White_Good_all,
+                        occupation = occupation_self_002)
+                        
+iat18<-iat18 %>%  mutate(year = 2018,
+                         countryres = as.character(countryres_num),
+                         countrycit = as.character(countrycit_num),
+                         dob = make_date(year= birthyear, month = birthmonth, day = 1),
+                         age = as.integer(interval(dob, today())/ years(1)),
+                         sex = case_when(
+                           birthsex == 1 ~ "m",
+                           birthsex == 2 ~ "f",
+                           TRUE ~ NA))
+                         
+                        
+## IAT 2019
+iat19<- iat_all_subsets[["19"]]
+str(iat19)
+
+#Remove obs missing D-scores
+iat19<-iat19 %>% filter(!is.na(D_biep.White_Good_all))
+iat19<-iat19 %>% rename(d_score = D_biep.White_Good_all, occupation = occupation_self_002)
+iat19<-iat19 %>%  mutate(year = 2019,
+                         countryres = as.character(countryres_num),
+                         countrycit = as.character(countrycit_num),
+                         dob = make_date(year= birthyear, month = birthmonth, day = 1),
+                         age = as.integer(interval(dob, today())/ years(1)),
+                         sex = case_when(
+                           birthSex == 1 ~ "m",
+                           birthSex == 2 ~ "f",
+                           TRUE ~ NA))
+
+
+## MERGE DATASETS
+datsfinal<-list(iat09, iat10, iat11, iat12, iat13, iat14, iat15, iat16, iat17, 
+                iat18,iat19)
+IAT_merged<-bind_rows(datsfinal)
+
+IAT_merged<-IAT_merged %>% mutate(sex_fixed = case_when(
+  sex %in% c("f", "F") ~ "2",
+  sex %in% c("m", "M") ~  "1",
+  TRUE ~ NA
+))
+IAT_merged$sex_fixed<-factor(IAT_merged$sex_fixed, levels = 1:2, 
+                             labels = c("Male", "Female"))
+
+#Quick checks
+#table(IAT_merged$occupation)
+#table(IAT_merged$edu_14)
+
+# SAVE FINAL MERGED DATASET--FULL
+saveRDS(IAT_merged, file = paste0(wd, data_dir, "iat_datafinal.RData"))
+
+
+
