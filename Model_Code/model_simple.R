@@ -33,6 +33,7 @@ for (i in 1:10) {
            frame_R = frame_R, frame_B = frame_B, pi_R_known = TRUE)
 }
 
+# Use MI variance
 for (i in 1:10) {
   print(i)
   run_samp2(i, N = nrow(sim_pop$X_data), num_post = num_post, 
@@ -40,6 +41,15 @@ for (i in 1:10) {
            frame_R = frame_R, frame_B = frame_B, pi_R_known = TRUE,
            n_runs = 5000, burn = 2500, thin = 5, update = 2500, D = 10, 
            parallel = TRUE)
+}
+# Use MI variance with post-processing adjustment
+for (i in 1:10) {
+  print(i)
+  run_samp3(i, N = nrow(sim_pop$X_data), num_post = num_post, 
+            pred_covs_R = pred_covs_R, pred_covs_B = pred_covs_B, 
+            frame_R = frame_R, frame_B = frame_B, pi_R_known = TRUE,
+            n_runs = 5000, burn = 2500, thin = 5, update = 2500, D = 10, 
+            parallel = TRUE, adjust = TRUE)
 }
 
 
@@ -290,6 +300,75 @@ run_samp2 <- function(i, N, num_post, pred_covs_R, pred_covs_B, frame_R, frame_B
   print(summ_df)
 }
 
+
+# Same as run_samp2 but applying variance adjustment as well as propagating 
+# uncertainty from the estimated weights
+pi_R_known <- TRUE
+run_samp3 <- function(i, N, num_post, pred_covs_R, pred_covs_B, frame_R, frame_B,
+                      pi_R_known = FALSE, n_runs = 10000, burn = 5000, thin = 5, 
+                      update = 5000, D = 10, parallel = TRUE, adjust = TRUE) {
+  load(paste0(wd, data_dir, "sim_samp_simple", i, "_B_wolca.RData"))
+  load(paste0(wd, data_dir, "sim_samp_simple", i, "_R_wolca.RData"))
+  
+  dat_B <- data.frame(sim_samp_B$covs)
+  dat_R <- data.frame(sim_samp_R$covs)
+  
+  # Number of overlapping individuals
+  length(intersect(sim_samp_R$ind_R, sim_samp_B$ind_B))
+  
+  ### Get pseudo-weights for PS for both those in NPS and those in PS
+  print("Getting pseudo-weights...")
+  pi_R <- sim_samp_R$true_pi_R
+  # Assume pi_R KNOWN for everyone
+  if (pi_R_known) {
+    hat_pi_R <- sim_samp_B$true_pi_R
+    # Need to estimate pi_R for those in S_B
+  } else {
+    hat_pi_R <- NULL
+  }
+  weights_temp <- get_weights(dat_B = dat_B, dat_R = dat_R, ind_B = ind_B, 
+                              num_post = num_post, pi_R = pi_R, hat_pi_R = hat_pi_R,
+                              pred_covs_B = pred_covs_B, pred_covs_R = pred_covs_R, 
+                              frame_B = frame_B, frame_R = frame_R, N = N)
+  wts <- weights_temp$wts
+  wts_post <- weights_temp$wts_post
+  
+  ### Run WOLCA adaptive and fixed sampler to obtain unadjusted estimates
+  print("Running WOLCA...")
+  x_mat <- sim_samp_B$X_data
+  res <- baysc::wolca(x_mat = x_mat, sampling_wt = wts, cluster_id = NULL, 
+                      stratum_id = NULL, run_sampler = "both", K_max = 30, adapt_seed = 1,
+                      class_cutoff = 0.05, n_runs = n_runs, burn = burn, thin = thin, 
+                      update = update, save_res = FALSE)
+  # post_MCMC_out <- baysc::post_process_wolca(MCMC_out = res$MCMC_out, 
+  #                                            J = res$data_vars$J, R = res$data_vars$R, 
+  #                                            class_cutoff = 0.05)
+  # estimates <- baysc::get_estimates_wolca(MCMC_out = res$MCMC_out, 
+  #                                         post_MCMC_out = post_MCMC_out, 
+  #                                         n = res$data_vars$n, J = res$data_vars$J, 
+  #                                         x_mat = x_mat)
+  # K <- estimates$K_red
+  
+  # Get adjusted estimates by running the WOLCA fixed sampler for multiple 
+  # draws from the weights posterior, using parallelization if desired 
+  # Apply post-processing variance adjustment 
+  print("Getting adjusted estimates...")
+  comb_estimates <- get_var_dir(D = D, wts_post = wts_post, K = res$estimates$K_red, 
+                                x_mat = x_mat, res = res, n_runs = n_runs, 
+                                burn = burn, thin = thin, update = update, 
+                                parallel = parallel, adjust = adjust)
+  res$estimates_adjust <- list(pi_red = comb_estimates$pi_red_stack, 
+                               theta_red = comb_estimates$theta_red_stack, 
+                               pi_med = comb_estimates$pi_med, 
+                               theta_med = comb_estimates$theta_med, 
+                               c_all = comb_estimates$c_all,
+                               pred_class_probs = comb_estimates$pred_class_probs)
+  
+  summ_df <- as.data.frame(get_summ_stats(res = res))
+  
+  print(summ_df)
+}
+
 # Obtain posterior parameter estimates and class assignments after propagating 
 # uncertainty from the posterior weight distribution
 # D: number of draws from the posterior weight distribution. WOLCA fixed sampler 
@@ -297,11 +376,12 @@ run_samp2 <- function(i, N, num_post, pred_covs_R, pred_covs_B, frame_R, frame_B
 # wts_post: Posterior distribution of estimated pseudo-weights
 # K: Number of classes, determined by the adaptive sampler
 # tol: Underflow tolerance
+#   adjust: Boolean indicating if post-processing variance adjustment should be applied
 get_var_dir <- function(D = 5, wts_post, K, x_mat, res, cluster_id = NULL, 
                         stratum_id = NULL, fixed_seed = 1, alpha_fixed = NULL, 
                         class_cutoff = 0.05, n_runs = 10000, burn = 5000, 
                         thin = 5, update = 1000, save_res = FALSE, 
-                        tol = 1e-8, parallel = TRUE) {
+                        tol = 1e-8, parallel = TRUE, adjust = FALSE) {
   M <- dim(res$estimates$pi_red)[1]
   n <- nrow(x_mat)
   J <- ncol(x_mat)
@@ -321,7 +401,8 @@ get_var_dir <- function(D = 5, wts_post, K, x_mat, res, cluster_id = NULL,
                          alpha_fixed = alpha_fixed, x_mat = x_mat, 
                          cluster_id = cluster_id, stratum_id = stratum_id, 
                          K = K, class_cutoff = class_cutoff, n_runs = n_runs, 
-                         burn = burn, thin = thin, update = update, save_res = save_res)
+                         burn = burn, thin = thin, update = update, 
+                         save_res = save_res, adjust = adjust)
     # Shutdown cluster
     stopCluster(cluster)
   } else {  # Serial version
@@ -329,7 +410,7 @@ get_var_dir <- function(D = 5, wts_post, K, x_mat, res, cluster_id = NULL,
     res_all <- lapply(1:D, wolca_d, wts_post = wts_post, alpha_fixed = alpha_fixed, 
                       x_mat = x_mat, cluster_id = cluster_id, stratum_id = stratum_id, 
                       K = K, class_cutoff = class_cutoff, n_runs = n_runs, burn = burn, 
-                      thin = thin, update = update, save_res = save_res)
+                      thin = thin, update = update, save_res = save_res, adjust = adjust)
   }
   
   # Extract results for all draws
@@ -396,8 +477,13 @@ get_var_dir <- function(D = 5, wts_post, K, x_mat, res, cluster_id = NULL,
     pi_red_new[[d]] <- pi
     theta <- theta_red_draws[[d]][, , new_order, , drop = FALSE]  # reorder
     theta <- ifelse(theta < tol, tol, theta)  # prevent underflow
-    theta <- plyr::aaply(theta, c(1, 2, 3),  # normalize
-                         function(x) x / sum(x, na.rm = TRUE), .drop = FALSE)
+    for (m in 1:dim(theta)[1]) {  # normalize
+      for (j in 1:dim(theta)[2]) {
+        for (k in 1:dim(theta)[3]) {
+          theta[m, j, k, ] <- theta[m, j, k, ] / sum(theta[m, j, k, ])
+        }
+      }
+    }
     theta_red_new[[d]] <- theta
   }
   
@@ -448,9 +534,11 @@ get_var_dir <- function(D = 5, wts_post, K, x_mat, res, cluster_id = NULL,
 # Inputs:
 #   d: Numeric index for posterior draw
 #   wts_post: Posterior distribution of  estimated pseudo-weights
+#   adjust: Boolean indicating if post-processing variance adjustment should be applied
 # inherit parameters from get_var_dir
 wolca_d <- function(d, wts_post, alpha_fixed, x_mat, cluster_id, stratum_id, K, 
-                    class_cutoff, n_runs, burn, thin, update, save_res) {
+                    class_cutoff, n_runs, burn, thin, update, adjust = FALSE, 
+                    save_res) {
   print(paste0("Draw ", d))
   
   # Draw from weights posterior
@@ -459,7 +547,7 @@ wolca_d <- function(d, wts_post, alpha_fixed, x_mat, cluster_id, stratum_id, K,
   
   # Initialize fixed sampler hyperparameters
   if (is.null(alpha_fixed)) {
-    alpha_fixed = rep(1, K)  # not sparsity-inducing
+    alpha_fixed = rep(K, K)  # not sparsity-inducing
   }
   # Run fixed sampler
   res_d <- baysc::wolca(x_mat = x_mat, sampling_wt = wts_d, cluster_id = cluster_id, 
@@ -467,8 +555,18 @@ wolca_d <- function(d, wts_post, alpha_fixed, x_mat, cluster_id, stratum_id, K,
                         K_fixed = K, fixed_seed = d, alpha_fixed = alpha_fixed, 
                         class_cutoff = class_cutoff, n_runs = n_runs, burn = burn, 
                         thin = thin, update = update, save_res = save_res)
-  # Get estimates
-  est_d <- res_d$estimates
+  # Apply post-processing variance adjustment for pseudo-likelihood if desired
+  if (adjust) {
+    res_d <- baysc::wolca_var_adjust(res = res_d, num_reps = 100, 
+                                     save_res = FALSE, adjust_seed = d)
+    # Get estimates
+    est_d <- res_d$estimates_adjust
+    est_d$K_red <- res_d$estimates$K_red
+  } else {
+    # Get estimates
+    est_d <- res_d$estimates
+  }
+  
   return(est_d)
 }
 
@@ -828,7 +926,8 @@ get_summ_stats <- function(res, res_true = NULL) {
   est_pi <- sort(est$pi_med)
   #true_pi <- sort(res_true$estimates$pi_med)
   true_pi <- sort(prop.table(table(sim_pop$c_all)))
-  ci_est <- apply(est$pi_red, 2, function(x) quantile(x, c(0.025, 0.975)))
+  ci_est <- apply(est$pi_red, 2, 
+                  function(x) quantile(x, c(0.025, 0.975), na.rm = TRUE))
   ci_est <- t(apply(ci_est, 1, sort))
   
   abs_bias <- mean(abs(est_pi - true_pi))
