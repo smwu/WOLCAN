@@ -45,8 +45,8 @@ offset_B <- root_n(x = (- pop$A1 + 0.3 * pop$A2), n = n_B)
 ### Generate selection probabilities as simple logistic regression
 pop$pi_R <- exp(offset_R - 0.5 * pop$A1 + pop$A2) / 
   (1 + exp(offset_R - 0.5 * pop$A1 + pop$A2))
-pop$pi_B <- exp(offset_R - pop$A1 + 0.3 * pop$A2) / 
-  (1 + exp(offset_R - pop$A1 + 0.3 * pop$A2))
+pop$pi_B <- exp(offset_B - pop$A1 + 0.3 * pop$A2) / 
+  (1 + exp(offset_B - pop$A1 + 0.3 * pop$A2))
 summary(pop$pi_R)
 summary(pop$pi_B)
 summary(1 / pop$pi_R)
