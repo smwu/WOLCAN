@@ -16,6 +16,7 @@ library(gridExtra)
 library(knitr)
 library(kableExtra)
 library(gt)
+library(parallel)
 
 # Set directories
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
@@ -35,14 +36,14 @@ save_path <- paste0(wd, sum_dir, "scen_", scenario, "/")
 
 save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE, 
                   WOLCA = TRUE, save_path = save_path, wd = wd, 
-                  data_dir = data_dir, res_dir = res_dir, subset = TRUE, 
+                  data_dir = data_dir, res_dir = res_dir, subset = FALSE, 
                   dist_type = "mean_abs")
 
 samp_i_seq <- 1:10
 save_path <- paste0(wd, sum_dir, "scen_", scenario, "/", "top10_")
 save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE, 
                   WOLCA = TRUE, save_path = save_path, wd = wd, 
-                  data_dir = data_dir, res_dir = res_dir, subset = TRUE, 
+                  data_dir = data_dir, res_dir = res_dir, subset = FALSE, 
                   dist_type = "mean_abs")
 
 #============== Create Tables ==================================================

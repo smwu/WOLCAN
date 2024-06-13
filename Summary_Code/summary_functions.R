@@ -55,7 +55,7 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   L <- length(samp_i_seq)  # Number of samples
   runtime_all <- numeric(L)
   # Bias squared using posterior median
-  K_dist <- pi_dist <- theta_dist <- wts_dist <- rep(NA, L) 
+  K_all <- K_dist <- pi_dist <- theta_dist <- wts_dist <- rep(NA, L) 
   # Posterior variance
   pi_var_all <- theta_var_all <- rep(NA, L) 
   # Coverage variables
@@ -69,189 +69,59 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   theta_mode_all <- array(NA, dim=c(L, dim(sim_pop$true_global_patterns)))
   mode_mis_all <- rep(NA, L)
   
+  
   #============== Get performance metrics for each iteration ===================
-  for (l in 1:L) { # For each sample iteration
-    samp_i = samp_i_seq[l]
-    print(samp_i)
+  # Number of cores available
+  n_cores <- detectCores()  
+  # Create a cluster using sockets
+  cluster <- parallel::makeCluster(n_cores)
+  # Export global functions to be available to all workers
+  clusterExport(cluster, varlist = c("get_true_params_wolcan", "get_dist_wolcan", 
+                                     "get_theta_dist_wolcan", "get_pi_dist_wolcan",
+                                     "get_subset_dist_wolcan", "abind"))
+  # Get metrics in parallel
+  summ_samp_all <- parLapply(cluster, samp_i_seq, get_metrics_wolcan_i, 
+                             sim_pop = sim_pop, wd = wd, data_dir = data_dir, 
+                             res_dir = res_dir, scenario = scenario, 
+                             model = model, dist_type = dist_type, subset = subset)
+  
+  # Shutdown cluster
+  stopCluster(cluster)
+  
+  # Get performance metrics for each sample iteration
+  for (l in 1:L) { 
     
-    # Obtain true observed population parameters
-    # Need to reload so that filler dimensions do not keep adding over iterations
-    true_params <- get_true_params_wolcan(sim_pop = sim_pop)
-    true_K <- as.vector(sim_pop$K)
+    summ_l <- summ_samp_all[[l]]
+    # print(l)
     
-    # Read in sample data. If file does not exist, move on to next iteration
-    sim_data_path <- paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", 
-                            samp_i, "_B_wolcan.RData")
-    if (!file.exists(sim_data_path)) {
-      print(paste0("File does not exist: ", sim_data_path))
-      next
-    }
-    load(sim_data_path)
+    runtime_all[l] <- summ_l$runtime
+    wts_dist[l] <- summ_l$wts_dist
+    K_all[l] <- summ_l$K
+    K_dist[l] <- summ_l$K_dist
+    theta_dist[l] <- summ_l$theta_dist
+    pi_dist[l] <- summ_l$pi_dist
+    pi_cover[l, ] <- summ_l$pi_cover
+    pi_var_all[l] <- summ_l$pi_var
+    pi_mse_all[l] <- summ_l$pi_mse
+    theta_cover[l, , 1:(dim(summ_l$theta_cover)[2])] <- summ_l$theta_cover
+    mode_mis_all[l] <- summ_l$mode_mis
     
-    # Read in results data
-    sim_res_path <- paste0(wd, res_dir, "scen_", scenario, "/samp_", samp_i, "_", 
-                           model, "_results.RData")
-    if (!file.exists(sim_res_path)) {
-      print(paste0("File does not exist: ", sim_res_path))
-      next
-    } 
-    load(sim_res_path)
-    runtime_all[l] <- res$runtime
-    if (model == "wolcan") {
-      if (scenario %in% c(1, 3)) {  # Baseline (1); no variance adjust (3)
-        estimates <- res$estimates_adjust
-      } else if (scenario == 2) {  # No MI procedure (2)
-        estimates <- res$estimates  # From adaptive sampler
-      } 
-    } else if (model == "wolca") {
-      estimates <- res$estimates
-    } else {
-      stop("Error: model must be one of 'wolcan' or 'wolca'")
-    }
-    
-    M <- dim(estimates$theta_red)[1]        # Number of MCMC iterations (stacked if wolcan)
-    J <- dim(estimates$theta_red)[2]        # Number of exposure items
-    R <- dim(estimates$theta_red)[4]        # Number of exposure levels
-    K <- length(estimates$pi_med)           # Number of classes
-    
-    # If number of classes is incorrect, fill remaining components with 0's
-    if (K > true_K) {
-      # If there are extra estimated classes, add 0s to true parameters
-      extra <- K - true_K
-      true_params$true_pi <- c(true_params$true_pi, rep(0, extra))
-      filler <- array(0, dim=c(dim(estimates$theta_med)[1], extra, 
-                               dim(estimates$theta_med)[3]))
-      true_params$true_theta <- abind(true_params$true_theta, filler, along = 2)
-    } else if (K < true_K) {
-      # If there are missing estimated classes, add 0s to estimated parameters
-      missing <- true_K - K
-      estimates$pi_med <- c(estimates$pi_med, rep(0, missing))
-      filler <- array(0, dim=c(dim(estimates$theta_med)[1], missing, 
-                               dim(estimates$theta_med)[3]))
-      estimates$theta_med <- abind(estimates$theta_med, filler, along = 2)  
-      
-      # Add 0's to full MCMC outputs for the missing classes
-      estimates$pi_red <- abind(estimates$pi_red, array(0, dim=c(M, missing)), 
-                               along=2)
-      estimates$theta_red <- abind(estimates$theta_red, 
-                                  array(0, dim=c(M, J, missing, R)), along = 3)
+    # Handle extra estimated classes if necessary
+    K_l <- length(summ_l$pi)
+    if (true_K < K_l) { 
+      # Expand estimated matrix and array sizes
+      extra <- K_l - true_K
+      # Expand pi_all
+      filler_pi <- array(NA, dim=c(L, extra))
+      pi_all <- abind::abind(pi_all, filler_pi, along = 2)
+      # Expand theta_mode_all
+      filler_theta <- array(NA, dim=c(L, J, extra))
+      theta_mode_all <- abind::abind(theta_mode_all, filler_theta, along = 3)
     }
     
-    #============== Calculated mean absolute distance (abs bias) ===============
-    ##### Posterior mean weights
-    wts_dist[l] <- get_dist_wolcan(par1 = res$data_vars$sampling_wt, 
-                                   par2 = 1 / sim_samp_B$true_pi_B, 
-                                   dist_type = dist_type)
-    
-    ##### Number of classes, K
-    K_dist[l] <- get_dist_wolcan(K, true_K, dist_type = dist_type)
-    
-    ##### theta: get dist (Eucl norm) and optimal ordering
-    theta_perm <- get_theta_dist_wolcan(est_theta = estimates$theta_med, 
-                                 true_theta = true_params$true_theta, 
-                                 est_K = K, true_K = true_K, subset = subset,
-                                 dist_type = dist_type)
-    theta_dist[l] <- theta_perm$theta_dist
-    order <- theta_perm$order
-    if (subset) {
-      order_sub_est <- theta_perm$order_sub_est
-      order_sub_true <- theta_perm$order_sub_true
-      K_min <- length(order_sub_est)
-    } else {
-      order_sub_est <- order
-      order_sub_true <- 1:length(order)
-      K_min <- K
-    }
-    
-    ##### pi 
-    pi_perm <- get_pi_dist_wolcan(est_pi = estimates$pi_med, 
-                           true_pi = true_params$true_pi, order = order, 
-                           est_K = K, true_K = true_K, subset = subset,
-                           order_sub_est = order_sub_est, 
-                           order_sub_true = order_sub_true,
-                           dist_type = dist_type)
-    pi_dist[l] <- pi_perm$pi_dist
-    
-    #============== Calculate coverage and CI widths ===========================
-    ##### pi
-    # Obtain credible intervals for each of the K true clusters
-    pi_CI <- apply(estimates$pi_red[, order_sub_est], 2, 
-                   function(x) quantile(x, c(0.025, 0.975)))
-    # Assign 1 if interval covers true value, 0 if not
-    # If a class is missing, defaults to 0 (not covered)
-    pi_cover[l, order_sub_true] <- ifelse(
-      (true_params$true_pi[order_sub_true] >= pi_CI[1,]) & 
-        (true_params$true_pi[order_sub_true] <= pi_CI[2,]), 1, 0)
-    # CI width averaged over the components
-    pi_var_all[l] <- mean(apply(pi_CI, 2, diff))
-    # MSE
-    pi_mse_all[l] <- mean(apply(estimates$pi_red, 1, function(x) 
-      get_dist_wolcan(x[order_sub_est], true_params$true_pi[order_sub_true], 
-               "mean_sq")))
-    
-    ##### theta
-    # Theta mode consumption levels for each item and class (pxK)
-    est_modes <- apply(estimates$theta_med[, order_sub_est, ], c(1,2), which.max)
-    true_modes <- apply(true_params$true_theta[, order_sub_true, ], c(1,2), 
-                        which.max)
-    # True modal probabilities for each item and class (pxK)
-    true_theta_modal <- apply(true_params$true_theta[ , order_sub_true, ], 
-                              c(1,2), max) 
-    theta_var_temp <- numeric(K_min)
-    for (k in 1:K_min) {
-      # Subset theta for cluster k
-      est_theta_k <- estimates$theta_red[, , order_sub_est[k], ]
-      # Each row provides the indices for one row of modal probabilities
-      modal_idx <- cbind(rep(1:M, each = J), rep(1:J, times = M), 
-                         rep(est_modes[, k], times = M))
-      # estimated probabilities for the mode for cluster k (Mxp)
-      est_theta_k_modal <- matrix(est_theta_k[modal_idx], ncol = J, byrow = TRUE)
-      # Obtain credible intervals for each item 
-      # Margins of apply are the dimensions that should be preserved
-      theta_CI <- apply(est_theta_k_modal, 2, 
-                        function(x) quantile(x, c(0.025, 0.975)))
-      theta_cover[l, , order_sub_true[k]] <- ifelse(
-        (true_theta_modal[, k] >= theta_CI[1, ]) &
-          (true_theta_modal[, k] <= theta_CI[2, ]), 1, 0)
-      # CI width measures variation in estimating the modes for each k,
-      # averaged over the items
-      theta_var_temp[k] <- mean(apply(theta_CI, 2, diff))
-    }
-    # CI width averaged over the classes
-    theta_var_all[l] <- mean(theta_var_temp)
-    # MSE
-    theta_mse_all[l] <- mean(apply(estimates$theta_red, 1, function(x) 
-      get_dist_wolcan(x[, order_sub_est, ], true_params$true_theta[, order_sub_true, ], 
-               "mean_sq")))
-    
-   
-    #============== Parameter estimate plot outputs ============================
-    ##### theta
-    # Theta mode consumption levels for each item and class (pxK)
-    est_modes <- apply(estimates$theta_med[, order, ], c(1,2), which.max)
-    true_modes <- apply(true_params$true_theta[, order, ], c(1,2), 
-                        which.max)
-    if (K != true_K) { # mismatch of number of classes
-      # Expand estimated array size if necessary
-      if (dim(theta_mode_all)[3] < K) {
-        filler <- array(NA, dim=c(L, dim(estimates$theta_med)[1], extra))
-        theta_mode_all <- abind(theta_mode_all, filler, along = 3)
-      }
-    } 
-    theta_mode_all[l, , 1:length(order)] <- est_modes
-    # Mode mismatches
-    mode_mis_all[l] <- sum(abs(est_modes[, 1:true_K] - 
-                                 sim_pop$true_global_patterns))
-    
-    ##### pi
-    if (K != true_K) { # mismatch of number of classes
-      # Expand estimated matrix size if necessary
-      if (dim(pi_all)[2] < K) {
-        filler <- array(NA, dim=c(L, extra))
-        pi_all <- abind(pi_all, filler, along = 2)
-      }
-    }
-    pi_all[l, 1:length(order)] <- estimates$pi_med[order]
+    theta_mode_all[l, , 1:(dim(summ_l$theta_mode)[2])] <- summ_l$theta_mode
+    pi_all[l, 1:length(summ_l$pi)] <- summ_l$pi
+
   }
   
   #============== Calculate bias^2 averaged over sample iterations =============
@@ -286,8 +156,199 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   ret_list[["theta_mode"]] <- theta_mode
   ret_list[["mode_mis"]] <- mode_mis
   ret_list[["mode_mis_all"]] <- mode_mis_all
+  ret_list[["K_all"]] <- K_all
   
   return(ret_list)
+}
+
+
+# Function to get performance metrics for one iteration
+# Inputs:
+#   samp_i: sample iteration index
+get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir, 
+                                 scenario, model, dist_type, subset) {
+  
+  # Obtain true observed population parameters
+  # Need to reload so that filler dimensions do not keep adding over iterations
+  true_params <- get_true_params_wolcan(sim_pop = sim_pop)
+  true_K <- as.vector(sim_pop$K)
+  
+  # Read in sample data. If file does not exist, move on to next iteration
+  sim_data_path <- paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", 
+                          samp_i, "_B_wolcan.RData")
+  if (!file.exists(sim_data_path)) {
+    print(paste0("File does not exist: ", sim_data_path))
+    next
+  }
+  load(sim_data_path)
+  
+  # Read in results data
+  sim_res_path <- paste0(wd, res_dir, "scen_", scenario, "/samp_", samp_i, "_", 
+                         model, "_results.RData")
+  if (!file.exists(sim_res_path)) {
+    print(paste0("File does not exist: ", sim_res_path))
+    next
+  } 
+  load(sim_res_path)
+  runtime <- res$runtime
+  if (model == "wolcan") {
+    if (scenario %in% c(1, 3)) {  # Baseline (1); no variance adjust (3)
+      estimates <- res$estimates_adjust
+    } else if (scenario == 2) {  # No MI procedure (2)
+      estimates <- res$estimates  # From adaptive sampler
+    } 
+  } else if (model == "wolca") {
+    estimates <- res$estimates
+  } else {
+    stop("Error: model must be one of 'wolcan' or 'wolca'")
+  }
+  
+  M <- dim(estimates$theta_red)[1]        # Number of MCMC iterations (stacked if wolcan)
+  J <- dim(estimates$theta_red)[2]        # Number of exposure items
+  R <- dim(estimates$theta_red)[4]        # Number of exposure levels
+  K <- length(estimates$pi_med)           # Number of classes
+  
+  # If number of classes is incorrect, fill remaining components with 0's
+  if (K > true_K) {
+    # If there are extra estimated classes, add 0s to true parameters
+    extra <- K - true_K
+    true_params$true_pi <- c(true_params$true_pi, rep(0, extra))
+    filler <- array(0, dim=c(dim(estimates$theta_med)[1], extra, 
+                             dim(estimates$theta_med)[3]))
+    true_params$true_theta <- abind::abind(true_params$true_theta, filler, along = 2)
+  } else if (K < true_K) {
+    # If there are missing estimated classes, add 0s to estimated parameters
+    missing <- true_K - K
+    estimates$pi_med <- c(estimates$pi_med, rep(0, missing))
+    filler <- array(0, dim=c(dim(estimates$theta_med)[1], missing, 
+                             dim(estimates$theta_med)[3]))
+    estimates$theta_med <- abind::abind(estimates$theta_med, filler, along = 2)  
+    
+    # Add 0's to full MCMC outputs for the missing classes
+    estimates$pi_red <- abind::abind(estimates$pi_red, array(0, dim=c(M, missing)), 
+                              along=2)
+    estimates$theta_red <- abind::abind(estimates$theta_red, 
+                                 array(0, dim=c(M, J, missing, R)), along = 3)
+  }
+  
+  #============== Calculated mean absolute distance (abs bias) ===============
+  ##### Posterior mean weights
+  wts_dist <- get_dist_wolcan(par1 = res$data_vars$sampling_wt, 
+                                 par2 = 1 / sim_samp_B$true_pi_B, 
+                                 dist_type = dist_type)
+  
+  ##### Number of classes, K
+  K_dist <- get_dist_wolcan(K, true_K, dist_type = dist_type)
+  
+  ##### theta: get dist (Eucl norm) and optimal ordering
+  theta_perm <- get_theta_dist_wolcan(est_theta = estimates$theta_med, 
+                                      true_theta = true_params$true_theta, 
+                                      est_K = K, true_K = true_K, subset = subset,
+                                      dist_type = dist_type)
+  theta_dist <- theta_perm$theta_dist
+  order <- theta_perm$order
+  if (subset) {
+    order_sub_est <- theta_perm$order_sub_est
+    order_sub_true <- theta_perm$order_sub_true
+    K_min <- length(order_sub_est)
+  } else {
+    order_sub_est <- order
+    order_sub_true <- 1:length(order)
+    K_min <- true_K
+  }
+  
+  ##### pi 
+  pi_perm <- get_pi_dist_wolcan(est_pi = estimates$pi_med, 
+                                true_pi = true_params$true_pi, order = order, 
+                                est_K = K, true_K = true_K, subset = subset,
+                                order_sub_est = order_sub_est, 
+                                order_sub_true = order_sub_true,
+                                dist_type = dist_type)
+  pi_dist <- pi_perm$pi_dist
+  
+  #============== Calculate coverage and CI widths ===========================
+  ##### pi
+  # Obtain credible intervals for each of the K true clusters
+  pi_CI <- apply(estimates$pi_red[, order_sub_est], 2, 
+                 function(x) quantile(x, c(0.025, 0.975)))
+  # Assign 1 if interval covers true value, 0 if not
+  # If a class is missing, defaults to 0 (not covered)
+  pi_cover <- numeric(length(order_sub_true))
+  pi_cover[order_sub_true] <- ifelse(
+    (true_params$true_pi[order_sub_true] >= pi_CI[1,]) & 
+      (true_params$true_pi[order_sub_true] <= pi_CI[2,]), 1, 0)
+  # Subset to the true number of classes for pi_cover
+  pi_cover <- pi_cover[1:true_K]
+  # CI width averaged over the components
+  pi_var <- mean(apply(pi_CI, 2, diff))
+  # MSE
+  pi_mse <- mean(apply(estimates$pi_red, 1, function(x) 
+    get_dist_wolcan(x[order_sub_est], true_params$true_pi[order_sub_true], 
+                    "mean_sq")))
+  
+  ##### theta
+  # Theta mode consumption levels for each item and class (pxK)
+  est_modes <- apply(estimates$theta_med[, order_sub_est, ], c(1,2), which.max)
+  true_modes <- apply(true_params$true_theta[, order_sub_true, ], c(1,2), 
+                      which.max)
+  # True modal probabilities for each item and class (pxK)
+  true_theta_modal <- apply(true_params$true_theta[ , order_sub_true, ], 
+                            c(1,2), max) 
+  theta_var_temp <- numeric(K_min)
+  # Initialize theta_cover
+  theta_cover <- array(NA, dim = dim(true_params$true_theta)[c(1,2)])
+  for (k in 1:K_min) {
+    # Subset theta for cluster k
+    est_theta_k <- estimates$theta_red[, , order_sub_est[k], ]
+    # Each row provides the indices for one row of modal probabilities
+    modal_idx <- cbind(rep(1:M, each = J), rep(1:J, times = M), 
+                       rep(est_modes[, k], times = M))
+    # estimated probabilities for the mode for cluster k (Mxp)
+    est_theta_k_modal <- matrix(est_theta_k[modal_idx], ncol = J, byrow = TRUE)
+    # Obtain credible intervals for each item 
+    # Margins of apply are the dimensions that should be preserved
+    theta_CI <- apply(est_theta_k_modal, 2, 
+                      function(x) quantile(x, c(0.025, 0.975)))
+    theta_cover[, order_sub_true[k]] <- ifelse(
+      (true_theta_modal[, k] >= theta_CI[1, ]) &
+        (true_theta_modal[, k] <= theta_CI[2, ]), 1, 0)
+    # CI width measures variation in estimating the modes for each k,
+    # averaged over the items
+    theta_var_temp[k] <- mean(apply(theta_CI, 2, diff))
+  }
+  # Subset to the true number of classes for theta_cover
+  theta_cover <- theta_cover[, 1:true_K]
+  # CI width averaged over the classes
+  theta_var <- mean(theta_var_temp)
+  # MSE
+  theta_mse <- mean(apply(estimates$theta_red, 1, function(x) 
+    get_dist_wolcan(x[, order_sub_est, ], 
+                    true_params$true_theta[, order_sub_true, ], "mean_sq")))
+  
+  
+  #============== Parameter estimate plot outputs ============================
+  ##### theta
+  # Theta mode consumption levels for each item and class (pxK)
+  est_modes <- apply(estimates$theta_med[, order, ], c(1,2), which.max)
+  true_modes <- apply(true_params$true_theta[, order, ], c(1,2), 
+                      which.max)
+  # Get theta mode
+  theta_mode <- array(NA, dim = c(J, K))
+  theta_mode[, 1:length(order)] <- est_modes
+  # Mode mismatches
+  mode_mis <- sum(abs(est_modes[, 1:true_K] - sim_pop$true_global_patterns))
+  
+  ##### pi
+  pi <- numeric(length(order))
+  pi[1:length(order)] <- estimates$pi_med[order]
+  
+  # Return performance metrics for the iteration
+  summ_i <- list(runtime = runtime, wts_dist = wts_dist, K_dist = K_dist, 
+                    theta_dist = theta_dist, pi_dist = pi_dist, 
+                    pi_cover = pi_cover, pi_var = pi_var,  pi_mse = pi_mse, 
+                    theta_cover = theta_cover, theta_var = theta_var, 
+                    theta_mse = theta_mse, theta_mode = theta_mode, 
+                    mode_mis = mode_mis, pi = pi, K = K)
 }
 
 
@@ -343,7 +404,7 @@ get_pi_dist_wolcan <- function(est_pi, true_pi, order, est_K, true_K, subset = T
 }
 
 get_theta_dist_wolcan <- function(est_theta, true_theta, est_K, true_K, 
-                                  subset = TRUE, dist_type) {
+                                  subset, dist_type) {
   
   ### First get minimum distance using full vectors (with additional 0's)
   ### to get optimal ordering
@@ -362,27 +423,27 @@ get_theta_dist_wolcan <- function(est_theta, true_theta, est_K, true_K,
   est_theta_perm <- est_theta[ , order, ]
   
   # Initialize subset ordering of classes
-  order_sub_est <- order_sub_true <- NULL
+  order_sub_est <- order
+  order_sub_true <- 1:true_K
+  # Lowest dist out of all permutations
+  theta_dist <- min(dist_all_perms)
   
   ### Option to use this minimum distance, or calculate minimum distance after
   ### subsetting (subset == TRUE)
-  if (!subset) {  # No subsetting
-    # Lowest dist out of all permutations
-    theta_dist <- min(dist_all_perms)
-  } else {  # Calculate distance after subsetting
+  if (subset) {   # Calculate distance after subsetting
     if (est_K < true_K) {  # If missing a true class
       theta_sub <- get_subset_dist_wolcan(large_par = true_theta[, 1:true_K, ], 
                                    small_par = est_theta[, 1:est_K, ], 
                                    param_name = "theta", dist_type = dist_type)
       theta_dist <- theta_sub$par_dist         # Distance
       order_sub_true <- theta_sub$order_large  # Subset order for true_theta
-      order_sub_est <- 1:est_K                 # Subset order for est_theta
+      order_sub_est <- 1:est_K                 
     } else if (true_K < est_K) {  # If extra class
       theta_sub <- get_subset_dist_wolcan(large_par = est_theta[, 1:est_K, ], 
                                    small_par = true_theta[, 1:true_K, ],
                                    param_name = "theta", dist_type = dist_type)
       theta_dist <- theta_sub$par_dist
-      order_sub_est <- theta_sub$order_large
+      order_sub_est <- theta_sub$order_large  # Subset order for est_theta
       order_sub_true <- 1:true_K
     } else {  # true_K == est_K
       # Lowest dist out of all permutations
