@@ -1,3 +1,11 @@
+#=================================================
+# Functions for simulating data
+# Author: Stephanie Wu
+# Date created: 2024/05/29
+# Date updated: 2024/05/29
+#=================================================
+
+
 ### Helper function to obtain offset to match desired sample size
 root_n <- function(x, n) {
   uniroot(function(t){mean(exp(t + x) / (1 + exp(t + x))) - (n / N)}, 
