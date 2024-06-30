@@ -32,6 +32,7 @@
 # Default is 10.
 #   parallel: Boolean specifying if parallelization is to be used for the 
 # multiple imputation variance calculation (default is `TRUE`).
+#   n_cores: Number of cores to run in parallel. Default is 1.
 #   adjust: Boolean specifying whether to incorporate the post-processing variance 
 # adjustment to ensure proper uncertainty intervals. Default is `TRUE`.
 #   adapt_seed: Default is 1.
@@ -48,19 +49,23 @@
 # 
 wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R, 
                    hat_pi_R = NULL, num_post = 1000, frame_B = 1, frame_R = 1,
-                   D = 10, parallel = TRUE, MI = TRUE, adjust = TRUE, tol = 1e-8,
+                   D = 10, parallel = TRUE, n_cores = 1, MI = TRUE, 
+                   adjust = TRUE, tol = 1e-8,
                    run_adapt = TRUE, K_max = 30, adapt_seed = 1, 
                    K_fixed = NULL, fixed_seed = 1, class_cutoff = 0.05,
                    n_runs = 20000, burn = 10000, thin = 5, update = 1000,
                    save_res = TRUE, save_path = NULL,
                    alpha_adapt = NULL, eta_adapt = NULL,
-                   alpha_fixed = NULL, eta_fixed = NULL) {
+                   alpha_fixed = NULL, eta_fixed = NULL, mod_stan = NULL) {
   
   # Check errors
   if (!run_adapt) {
     if (is.null(K_fixed)) {
       stop("K_fixed must be specified if run_adapt is set to FALSE")
     }
+  }
+  if (n_cores > detectCores()) {
+    stop("n_cores must not be larger than the number of cores available, obtained by detectCores()")
   }
   
   # Begin runtime tracker
@@ -99,7 +104,7 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
     ### Using mean estimated weights, run WOLCA model adaptive sampler to obtain 
     ### number of latent classes K
     print("Obtaining number of latent classes...")
-    res <- baysc::wolca(x_mat = x_mat, sampling_wt = wts, run_sampler = "adapt", 
+    res <- wolca(x_mat = x_mat, sampling_wt = wts, run_sampler = "adapt", 
                         K_max = K_max, adapt_seed = adapt_seed, 
                         class_cutoff = class_cutoff, 
                         n_runs = n_runs, burn = burn, thin = thin, 
@@ -107,11 +112,11 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
                         alpha_adapt = alpha_adapt, eta_adapt = eta_adapt)
     
     # Post-processing to recalibrate labels and remove extraneous empty classes
-    res$post_MCMC_out <- baysc::post_process_wolca(MCMC_out = res$MCMC_out, J = J, 
+    res$post_MCMC_out <- post_process_wolca(MCMC_out = res$MCMC_out, J = J, 
                                                    R = R, class_cutoff = class_cutoff)
     
     # Obtain posterior estimates, reduce number of classes, analyze results
-    res$estimates <- baysc::get_estimates_wolca(MCMC_out = res$MCMC_out, 
+    res$estimates <- get_estimates_wolca(MCMC_out = res$MCMC_out, 
                                                 post_MCMC_out = res$post_MCMC_out, 
                                                 n = n, J = J, x_mat = x_mat)
     # Save space
@@ -123,6 +128,8 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
     K <- res$estimates$K_red
   } else {
     K <- K_fixed
+    # Initialize results list
+    res <- list()
   }
   print(paste0("K: ", K))
   # if (run_sampler == "adapt") {
@@ -150,8 +157,9 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
     # weights posterior, using parallelization if desired. 
     # Apply post-processing variance adjustment for proper variance estimation.
     print("Running estimation and variance...")
-    comb_estimates <- get_var_dir(D = D, wts_post = wts_post, res = res, K = K, 
-                                  tol = tol, parallel = parallel, adjust = adjust, 
+    comb_estimates <- get_var_dir(D = D, wts_post = wts_post, K = K, 
+                                  tol = tol, parallel = parallel, 
+                                  n_cores = n_cores, adjust = adjust, 
                                   x_mat = x_mat, fixed_seed = fixed_seed,
                                   class_cutoff = class_cutoff, n_runs = n_runs, 
                                   burn = burn, thin = thin, update = update, 
@@ -225,14 +233,14 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
 #   adjust: Boolean indicating if post-processing variance adjustment should be 
 # applied. Default is TRUE.
 #   alpha_fixed, eta_fixed. Only non-NULL if K came from K_fixed
-get_var_dir <- function(D = 10, wts_post, res, K, x_mat, fixed_seed = 1, 
-                        tol = 1e-8, parallel = TRUE, 
+get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1, 
+                        tol = 1e-8, parallel = TRUE, n_cores = 1,
                         adjust = TRUE, class_cutoff = 0.05, n_runs = 20000, 
                         burn = 10000, thin = 5, update = 1000,
                         alpha_fixed = NULL, eta_fixed = NULL) {
   
   # Get dimensions
-  M <- dim(res$estimates$pi_red)[1]
+  M <- ceiling(n_runs / thin) 
   n <- nrow(x_mat)
   J <- ncol(x_mat)
   
@@ -244,17 +252,24 @@ get_var_dir <- function(D = 10, wts_post, res, K, x_mat, fixed_seed = 1,
   wts_draws <- matrix(NA, nrow = n, ncol = D)
   
   if (parallel) {  # Parallel version
-    # Number of cores available
-    n_cores <- detectCores()  
+    # # Number of cores available
+    # n_cores <- detectCores()  
+    
     # Create a cluster using sockets
     cluster <- parallel::makeCluster(n_cores)
+    # Export global functions to be available to all workers
+    clusterExport(cluster, varlist = c("wolca", "wolca_var_adjust", "catch_errors", 
+                                       "init_OLCA", "run_MCMC_Rcpp_wolca", 
+                                       "post_process_wolca", "get_estimates_wolca"))
     # Run wolca_d in parallel
     res_all <- parLapply(cluster, 1:D, wolca_d, wts_post = wts_post, 
                          x_mat = x_mat, K = K, adjust = adjust, 
                          class_cutoff = class_cutoff, n_runs = n_runs, 
                          burn = burn, thin = thin, update = update,
                          fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
-                         eta_fixed = eta_fixed)
+                         eta_fixed = eta_fixed, mod_stan = mod_stan, 
+                         rcpp_path = paste0(wd, code_dir, "baysc_functions/", 
+                                            "main_Rcpp_functions.cpp"))
     # Shutdown cluster
     stopCluster(cluster)
     
@@ -264,7 +279,7 @@ get_var_dir <- function(D = 10, wts_post, res, K, x_mat, fixed_seed = 1,
                       adjust = adjust, class_cutoff = class_cutoff, 
                       n_runs = n_runs, burn = burn, thin = thin, update = update,
                       fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
-                      eta_fixed = eta_fixed)
+                      eta_fixed = eta_fixed, mod_stan = mod_stan)
   }
   
   # Extract results for all draws
@@ -343,7 +358,7 @@ get_var_dir <- function(D = 10, wts_post, res, K, x_mat, fixed_seed = 1,
       # Individuals who were assigned to old class k
       old_k_inds <- which(c_all_draws[d, ] == k)
       # Most common new class assignment among those individuals
-      mode_new <- baysc::get_mode(red_c_all[old_k_inds])
+      mode_new <- get_mode(red_c_all[old_k_inds])
       new_order[k] <- mode_new
       # Reorder classes for all pi and theta estimates
       if (!is.na(mode_new)) {
@@ -415,7 +430,7 @@ get_var_dir <- function(D = 10, wts_post, res, K, x_mat, fixed_seed = 1,
                            .drop = FALSE)  # Re-normalize
   
   #============== Update c using unique classes and posterior estimates ========
-  c_all <- res$estimates$c_all  # Placeholder class assignments
+  c_all <- numeric(n)  # Placeholder class assignments
   pred_class_probs <- matrix(NA, nrow = n, ncol = K_red) # Posterior class membership probabilities
   log_cond_c <- matrix(NA, nrow = n, ncol = K_red)       # Individual log-likelihood for each class
   # Calculate posterior class membership, p(c_i=k|-), for each class k
@@ -452,7 +467,11 @@ get_var_dir <- function(D = 10, wts_post, res, K, x_mat, fixed_seed = 1,
 #   adjust: Boolean indicating if post-processing variance adjustment should be applied
 # inherit parameters from get_var_dir
 wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn, 
-                    thin, update, fixed_seed, alpha_fixed, eta_fixed) {
+                    thin, update, fixed_seed, alpha_fixed, eta_fixed, 
+                    mod_stan = NULL, rcpp_path = NULL) {
+  
+  # Source Rcpp functions from baysc package
+  Rcpp::sourceCpp(rcpp_path)
   
   print(paste0("Draw ", d))
   
@@ -465,15 +484,15 @@ wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn,
     alpha_fixed = rep(K, K)  # not sparsity-inducing
   }
   # Run fixed sampler
-  res_d <- baysc::wolca(x_mat = x_mat, sampling_wt = wts_d, run_sampler = "fixed", 
+  res_d <- wolca(x_mat = x_mat, sampling_wt = wts_d, run_sampler = "fixed", 
                         K_fixed = K, fixed_seed = fixed_seed, 
                         alpha_fixed = alpha_fixed, eta_fixed = eta_fixed, 
                         class_cutoff = class_cutoff, n_runs = n_runs, burn = burn, 
                         thin = thin, update = update, save_res = FALSE)
   # Apply post-processing variance adjustment for pseudo-likelihood if desired
   if (adjust) {
-    res_d <- baysc::wolca_var_adjust(res = res_d, num_reps = 100, 
-                                     save_res = FALSE, adjust_seed = fixed_seed)
+    res_d <- wolca_var_adjust(res = res_d, num_reps = 100, save_res = FALSE, 
+                              adjust_seed = fixed_seed, mod_stan = mod_stan)
     # Get estimates
     est_d <- res_d$estimates_adjust
     est_d$K_red <- res_d$estimates$K_red

@@ -14,10 +14,12 @@ root_n <- function(x, n) {
 
 # Create and save simulated population
 # Inherit parameters from baysc::simulate_pop
+# n_B: Sample size for non-probability sample, used for selection probabilities offset
+# n_R: Sample size for reference sample, used for selection probabilities offset
 # rho: Correlation between covariates influencing selection
 # high_overlap: Boolean indicating if the reference and non-probability samples 
 # selection mechanism should have high overlap (default = TRUE) or low overlap.
-sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE,
+sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R, 
                            formula_c, beta_mat_c, formula_x, beta_list_x, 
                            save_res = TRUE, save_path = NULL, pop_seed = 1) {
   
@@ -63,8 +65,7 @@ sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE,
     offset_B <- root_n(x = (- 1.2 * pop$A1 + 0.2 * pop$A12 + 1.1 * pop$A2 
                             + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2), n = n_R)
     offset_R <- root_n(x = (- 0.6 * pop$A1 + 0.4 * pop$A12 + 0.8 * pop$A2 
-                            + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2), 
-                       n = n_B)
+                            + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2), n = n_B)
     # Selection probabilities for non-probability sample
     pop$pi_B <- exp(offset_B - 1.2 * pop$A1 + 0.2 * pop$A12 + 1.1 * pop$A2 
                     + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2) / 

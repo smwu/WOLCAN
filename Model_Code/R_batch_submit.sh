@@ -3,7 +3,8 @@
 #SBATCH -o WOLCAN_scen1_%A.out  # Shared standard output with job ID
 #SBATCH -e WOLCAN_scen1_%A.err  # Shared standard error with job ID
 #SBATCH -p shared      # Partition to submit to
-#SBATCH -n 1	       # Number of cores
+#SBATCH -c 8	       # Number of cores (for parallelization)
+#SBATCH -N 1           # Number of nodes
 #SBATCH -t 0-8:00:00  # Runtime (D-HH:MM:SS)
 #SBATCH --mem=5000     # Memory request
 #SBATCH --mail-type=BEGIN,END,FAIL  # Mail notifications

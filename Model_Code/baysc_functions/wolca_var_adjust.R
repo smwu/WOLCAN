@@ -133,7 +133,7 @@ unconstrain_wolca <- function(i, K, stan_model, pi, theta) {
 #' }
 wolca_var_adjust <- function(res, alpha = NULL, eta = NULL, num_reps = 100, 
                              save_res = TRUE, save_path = NULL, 
-                             adjust_seed = NULL) {
+                             adjust_seed = NULL, mod_stan = NULL) {
   
   # Begin runtime tracker
   start_time <- Sys.time()
@@ -242,8 +242,10 @@ wolca_var_adjust <- function(res, alpha = NULL, eta = NULL, num_reps = 100,
   # Stan parameters of interest
   par_stan <- c('pi', 'theta')  # subset of parameters interested in
   
-  # Stan model
-  mod_stan <- stanmodels$WOLCA_main
+  # Stan model (updated for local code)
+  if (is.null(mod_stan)) {
+    mod_stan <- stanmodels$WOLCA_main
+  }
   
   # Run Stan model
   # Stan will pass warnings from calling 0 chains, but will still create an 
