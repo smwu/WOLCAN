@@ -9,10 +9,11 @@
 args <- commandArgs(trailingOnly = TRUE)
 scenario <- args[[1]]   # Simulation scenario
 samp_i <- args[[2]]     # Sample number
+samp_i <- as.numeric(samp_i)
 
 # Whether or not baysc package has been installed. If FALSE, local functions 
 # will be used instead
-baysc_package = FALSE
+baysc_package = TRUE
 
 # Load libraries
 library(BART)  # BART
@@ -102,7 +103,7 @@ if (already_done) {
   # Model estimation
   D <- 10            # Number of sets of MI pseudo-weights
   parallel <- TRUE   # Whether to parallelize for MI
-  n_cores <- 4       # Number of cores to use for parallelization
+  n_cores <- 8       # Number of cores to use for parallelization
   MI <- TRUE         # Whether to run MI procedure for variance estimation
   adjust <- TRUE     # Whether to adjust variance for pseudo-likelihood
   tol <- 1e-8        # Underflow tolerance
@@ -115,11 +116,11 @@ if (already_done) {
   thin <- 5          # Thinning
   update <- 5000     # Display update frequency
   
-  # For tests
-  n_runs <- 1000
-  burn <- 500
-  thin <- 5
-  update <- 500
+  # # For tests
+  # n_runs <- 1000
+  # burn <- 500
+  # thin <- 5
+  # update <- 500
   
   ### Modifications based on scenario
   if (scenario == 2) {  # No propagation of weights uncertainty
@@ -142,7 +143,7 @@ if (already_done) {
                 K_max = K_max, adapt_seed = adapt_seed, K_fixed = NULL, 
                 fixed_seed = fixed_seed, class_cutoff = 0.05, 
                 n_runs = n_runs, burn = burn, thin = thin, update = update, 
-                save_res = TRUE, save_path = save_path, mod_stan = mod_stan)
+                save_res = TRUE, save_path = save_path)
   
   ### Run unweighted model
   if (scenario %in% c(1, 7:11)) {

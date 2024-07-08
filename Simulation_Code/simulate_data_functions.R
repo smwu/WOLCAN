@@ -56,26 +56,27 @@ sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R,
   pop$A1A2 <- pop$A1*pop$A2
   pop$logA2 <- log(abs(pop$A2))
   pop$sinA1A2 <- sin(pop$A1A2)
-  # pop$A3 <- rnorm(n = N, 0, 2)
+  pop$A3 <- rnorm(n = N, 0, 2)
   
   ### Generate selection probabilities
   ## High-overlap setting
   if (high_overlap) {
     # Offsets to obtain correct sample size
-    offset_B <- root_n(x = (- 1.2 * pop$A1 + 0.2 * pop$A12 + 1.1 * pop$A2 
-                            + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2), n = n_R)
-    offset_R <- root_n(x = (- 0.6 * pop$A1 + 0.4 * pop$A12 + 0.8 * pop$A2 
-                            + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2), n = n_B)
+    offset_B <- root_n(x = (- 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
+                            + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.05 * pop$A3), 
+                       n = n_R)
+    offset_R <- root_n(x = (- 0.6 * pop$A1 + 0.4 * pop$A12 + 0.7 * pop$A2 
+                            + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.04 * pop$A3), n = n_B)
     # Selection probabilities for non-probability sample
-    pop$pi_B <- exp(offset_B - 1.2 * pop$A1 + 0.2 * pop$A12 + 1.1 * pop$A2 
-                    + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2) / 
-      (1 + exp(offset_B - 1.2 * pop$A1 + 0.2 * pop$A12 + 1.1 * pop$A2 
-               + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2)) 
+    pop$pi_B <- exp(offset_B - 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
+                    + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.05 * pop$A3) / 
+      (1 + exp(offset_B - 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
+               + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.05 * pop$A3)) 
     # Selection probabilities for reference sample
-    pop$pi_R <- exp(offset_R - 0.6 * pop$A1 + 0.4 * pop$A12 + 0.8 * pop$A2 
-                    + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2) / 
-      (1 + exp(offset_R - 0.6 * pop$A1 + 0.4 * pop$A12 + 0.8 * pop$A2 
-               + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2))
+    pop$pi_R <- exp(offset_R - 0.6 * pop$A1 + 0.4 * pop$A12 + 0.7 * pop$A2 
+                    + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.04 * pop$A3) / 
+      (1 + exp(offset_R - 0.6 * pop$A1 + 0.4 * pop$A12 + 0.7 * pop$A2 
+               + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.04 * pop$A3))
     ## Low-overlap setting
   } else {
     # Offsets to obtain correct sample size
@@ -131,7 +132,7 @@ sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R,
   
   ### Add to population data and save
   sim_pop <- list(N = N, J = J, R = R, K = K, 
-                  pop = pop[, c("A1", "A2", "A12", "A1A2", "logA2", "sinA1A2")], 
+                  pop = pop[, c("A1", "A2", "A12", "A1A2", "logA2", "sinA1A2", "A3")], 
                   # A1 = pop$A1, A2 = pop$A2, A12 = pop$A12, A1A2 = pop$A1A2, 
                   # logA2 = pop$logA2, sinA1A2 = pop$sinA1A2, 
                   pi_R = pop$pi_R, pi_B = pop$pi_B, 
