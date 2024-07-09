@@ -30,7 +30,7 @@ sum_dir <- "Summary_Results/"  # Summary results directory
 source(paste0(wd, code_dir, "summary_functions.R"))
 
 #================ Summarize and save results ===================================
-scenario <- 11
+scenario <- 1
 samp_i_seq <- 1:100
 # Define path to save results
 save_path <- paste0(wd, sum_dir, "scen_", scenario, "/")
@@ -55,7 +55,7 @@ save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE,
 
 #============== Create Tables ==================================================
 
-scenarios <- 11
+scenarios <- 1
 scen_names <- c("Baseline: n = 2000 (5%)")
 save_names <- rep("metrics_scen", 3)
 create_app_tables_wolcan(save_path = save_path, scenarios = scenarios, 

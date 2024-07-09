@@ -5,8 +5,8 @@
 #SBATCH -p shared      # Partition to submit to
 #SBATCH -c 8	       # Number of cores (for parallelization)
 #SBATCH -N 1           # Number of nodes
-#SBATCH -t 0-5:00:00  # Runtime (D-HH:MM:SS)
-#SBATCH --mem=9000     # Memory request
+#SBATCH -t 0-0:30:00  # Runtime (D-HH:MM:SS)
+#SBATCH --mem=8000     # Memory request
 #SBATCH --mail-type=BEGIN,END,FAIL  # Mail notifications
 #SBATCH --mail-user=stephaniewu@fas.harvard.edu  # Account to email
 

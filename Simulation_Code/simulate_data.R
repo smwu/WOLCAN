@@ -8,6 +8,7 @@
 rm(list = ls())
 
 library(MASS)  # multivariate normal distribution
+library(baysc) # source functions from baysc package
 # library(baysc)  # swolca and data generation
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
 wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
@@ -18,10 +19,10 @@ code_dir <- "Simulation_Code/"      # Simulation code directory
 # Source simulation functions
 source(paste0(wd, code_dir, "simulate_data_functions.R"))
 
-# Source functions from baysc package
-file_list <- c("simulate_data.R")
-invisible(lapply(file_list, function(x) 
-  source(paste0(wd, "Model_Code/", "baysc_functions/", x))))
+# # Source functions from baysc package
+# file_list <- c("simulate_data.R")
+# invisible(lapply(file_list, function(x) 
+#   source(paste0(wd, "Model_Code/", "baysc_functions/", x))))
 
 #=================== Generate population: SCENARIO 1 ===========================
 # Variance adjustment, pi_R unknown and predicted using continuous BART, 
@@ -41,11 +42,11 @@ N <- 40000     # Population size
 pop_seed <- 1  # Set seed
 
 ### Parameters for generating categorical latent class assignment C
-formula_c <- "~ A1 + A2 + A1A2"
+formula_c <- "~ A1 + A2 + A3"
 beta_mat_c <- matrix(c(0, 0, 0, 0, 
                        0.4, -0.5, 0.75, 0.1,  
                        -0.2, -1, 1.2, 0.25), nrow = 3, byrow = TRUE)
-colnames(beta_mat_c) <- c("Intercept", "A1", "A2", "A1A2")
+colnames(beta_mat_c) <- c("Intercept", "A1", "A2", "A3")
 
 ### Parameters for generating observed manifest variables X
 J <- 30; R <- 4; K <- 3
@@ -67,7 +68,7 @@ formula_x <- "~ c_all + A3"
 # Items 1-2 are affected in the following manner: 
 # level 4 probability increases as A3 increases
 beta_list_x <- lapply(1:2, function(j) cbind(beta_list_x_temp[[j]],
-                                             A3 = c(0, 0, 0, 0.1)))
+                                             A3 = c(0, 0, 0, 2)))
 beta_list_x <- c(beta_list_x, lapply(3:J, function(j) cbind(beta_list_x_temp[[j]], 
                                                A2 = rep(0, 4))))
 V_unique <- as.data.frame(expand.grid(c_all = as.factor(1:K),

@@ -92,8 +92,8 @@ if (already_done) {
   x_mat <- sim_samp_B$X_data  # Multivariate categorical variables
   dat_B <- data.frame(sim_samp_B$covs)  # Covariates for NPS
   dat_R <- data.frame(sim_samp_R$covs)  # Covariates for reference
-  pred_covs_B <- c("A1", "A2", "A1A2")  # Covariates to predict NPS selection
-  pred_covs_R <- c("A1", "A2", "A1A2")  # Covariates to predict RS selection
+  pred_covs_B <- c("A1", "A2", "A1A2", "A3")  # Covariates to predict NPS selection
+  pred_covs_R <- c("A1", "A2", "A1A2", "A3")  # Covariates to predict RS selection
   pi_R <- sim_samp_R$pi_R  # RS selection probabilites for those in RS
   hat_pi_R <- NULL  # RS selection probabilities for those in NPS
   num_post <- 1000  # Number of posterior BART draws for estimating weights
@@ -101,7 +101,7 @@ if (already_done) {
   frame_R <- 1  # Coverage probability of RS frame
   
   # Model estimation
-  D <- 10            # Number of sets of MI pseudo-weights
+  D <- 20            # Number of sets of MI pseudo-weights
   parallel <- TRUE   # Whether to parallelize for MI
   n_cores <- 8       # Number of cores to use for parallelization
   MI <- TRUE         # Whether to run MI procedure for variance estimation
@@ -116,11 +116,11 @@ if (already_done) {
   thin <- 5          # Thinning
   update <- 5000     # Display update frequency
   
-  # # For tests
-  # n_runs <- 1000
-  # burn <- 500
-  # thin <- 5
-  # update <- 500
+  # For tests
+  n_runs <- 1000
+  burn <- 500
+  thin <- 5
+  update <- 500
   
   ### Modifications based on scenario
   if (scenario == 2) {  # No propagation of weights uncertainty

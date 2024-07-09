@@ -262,7 +262,7 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                          class_cutoff = class_cutoff, n_runs = n_runs, 
                          burn = burn, thin = thin, update = update,
                          fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
-                         eta_fixed = eta_fixed)
+                         eta_fixed = eta_fixed, D = D)
     # Shutdown cluster
     stopCluster(cluster)
     
@@ -272,7 +272,7 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                       adjust = adjust, class_cutoff = class_cutoff, 
                       n_runs = n_runs, burn = burn, thin = thin, update = update,
                       fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
-                      eta_fixed = eta_fixed)
+                      eta_fixed = eta_fixed, D = D)
   }
   
   # Keep only the draws with K_red = K_fixed
@@ -474,16 +474,23 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
 #   adjust: Boolean indicating if post-processing variance adjustment should be applied
 # inherit parameters from get_var_dir
 wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn, 
-                    thin, update, fixed_seed, alpha_fixed, eta_fixed) {
+                    thin, update, fixed_seed, alpha_fixed, eta_fixed, D) {
   
   # # Source Rcpp functions from baysc package
   # Rcpp::sourceCpp(rcpp_path)
   
   print(paste0("Draw ", d))
   
-  # Draw from weights posterior
-  draw <- sample(1:ncol(wts_post), size = 1)
+  # Get quantiles of medians of weights posterior
+  col_meds <- c(apply(wts_post, 2, median))
+  cutoffs <- (seq(1, D, length.out = D) - 0.5) / D
+  med_quants <- stats::quantile(x = col_meds, probs = cutoffs)
+  
+  # Draw from weights posterior closest to quantile
+  draw <- which.min(abs(col_meds - med_quants[d]))
   wts_d <- c(wts_post[, draw])
+      # draw <- sample(1:ncol(wts_post), size = 1)
+      # wts_d <- c(wts_post[, draw])
   
   # Initialize fixed sampler hyperparameters
   if (is.null(alpha_fixed)) {

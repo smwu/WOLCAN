@@ -56,27 +56,27 @@ sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R,
   pop$A1A2 <- pop$A1*pop$A2
   pop$logA2 <- log(abs(pop$A2))
   pop$sinA1A2 <- sin(pop$A1A2)
-  pop$A3 <- rnorm(n = N, 0, 2)
+  pop$A3 <- rnorm(n = N, 2, 1)
   
   ### Generate selection probabilities
   ## High-overlap setting
   if (high_overlap) {
     # Offsets to obtain correct sample size
     offset_B <- root_n(x = (- 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
-                            + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.05 * pop$A3), 
+                            + 0.2 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.3 * pop$A3), 
                        n = n_R)
     offset_R <- root_n(x = (- 0.6 * pop$A1 + 0.4 * pop$A12 + 0.7 * pop$A2 
-                            + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.04 * pop$A3), n = n_B)
+                            + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.4 * pop$A3), n = n_B)
     # Selection probabilities for non-probability sample
     pop$pi_B <- exp(offset_B - 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
-                    + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.05 * pop$A3) / 
+                    + 0.2 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.3 * pop$A3) / 
       (1 + exp(offset_B - 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
-               + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.05 * pop$A3)) 
+               + 0.2 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.3 * pop$A3)) 
     # Selection probabilities for reference sample
     pop$pi_R <- exp(offset_R - 0.6 * pop$A1 + 0.4 * pop$A12 + 0.7 * pop$A2 
-                    + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.04 * pop$A3) / 
+                    + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.4 * pop$A3) / 
       (1 + exp(offset_R - 0.6 * pop$A1 + 0.4 * pop$A12 + 0.7 * pop$A2 
-               + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.04 * pop$A3))
+               + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.4 * pop$A3))
     ## Low-overlap setting
   } else {
     # Offsets to obtain correct sample size
@@ -197,7 +197,7 @@ sim_samp_wolcan <- function(i, sim_pop, n_B, n_R, scenario,
     # indices, covariates, true (unknown) pi_B, true (unknown) pi_R, c_all, 
     # and X_data for selected individuals
     ind_B = ind_B, 
-    covs = sim_pop$pop[ind_B, c("A1", "A2", "A12", "A1A2", "logA2", "sinA1A2")], 
+    covs = sim_pop$pop[ind_B, c("A1", "A2", "A12", "A1A2", "logA2", "sinA1A2", "A3")], 
     true_pi_B = sim_pop$pi_B[ind_B], 
     true_pi_R = sim_pop$pi_R[ind_B],
     c_all = sim_pop$c_all[ind_B], 
@@ -206,7 +206,7 @@ sim_samp_wolcan <- function(i, sim_pop, n_B, n_R, scenario,
   sim_samp_R <- list(
     # indices, covariates, known pi_R, c_all, and X_data for selected individuals
     ind_R = ind_R, 
-    covs = sim_pop$pop[ind_R, c("A1", "A2", "A12", "A1A2", "logA2", "sinA1A2")], 
+    covs = sim_pop$pop[ind_R, c("A1", "A2", "A12", "A1A2", "logA2", "sinA1A2", "A3")], 
     pi_R = sim_pop$pi_R[ind_R], 
     c_all = sim_pop$c_all[ind_R], 
     X_data = sim_pop$X_data[ind_R, ], delta_R = delta_R)
