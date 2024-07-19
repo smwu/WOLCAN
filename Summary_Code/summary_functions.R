@@ -113,6 +113,7 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
         pi_mse_all[l] <- summ_l$pi_mse
         theta_cover[l, , 1:(dim(summ_l$theta_cover)[2])] <- summ_l$theta_cover
         theta_var_all[l] <- summ_l$theta_var
+        theta_mse_all[l] <- summ_l$theta_mse
         mode_mis_all[l] <- summ_l$mode_mis
         
         # Handle extra estimated classes if necessary
@@ -155,6 +156,7 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
         pi_mse_all[l] <- summ_l$pi_mse
         theta_cover[l, , 1:(dim(summ_l$theta_cover)[2])] <- summ_l$theta_cover
         theta_var_all[l] <- summ_l$theta_var
+        theta_mse_all[l] <- summ_l$theta_mse
         mode_mis_all[l] <- summ_l$mode_mis
         
         # Handle extra estimated classes if necessary
@@ -565,7 +567,7 @@ get_true_params_wolcan <- function(sim_pop) {
 }
 
 #==================== Tables ===================================================
-create_app_tables_wolcan <- function(save_path, scenarios, scen_names, 
+create_app_tables_wolcan <- function(save_paths, scenarios, scen_names, 
                                      overall_name, format = "latex", 
                                      digits = 3) {
   num_scen <- length(scenarios)
@@ -582,6 +584,7 @@ create_app_tables_wolcan <- function(save_path, scenarios, scen_names,
   # output_inds <- 1:7
   output_inds <- c(1, 2, 3, 5, 4, 6)
   for (i in 1:num_scen) {
+    save_path <- save_paths[i]
     load(paste0(save_path, "summary.RData"))
     row_ind <- 2 * (i-1)
     metrics_wolcaumm[row_ind + 1, -c(1,2)] <- c(metrics_all$metrics_wolca[output_inds], 

@@ -64,15 +64,21 @@ beta_list_x_temp <- get_betas_x(profiles = profiles, R = R,
                            modal_theta_prob = modal_theta_prob,
                            formula_x = formula_x, V_unique = V_unique)
 # Add in coefficients for A3, updating formula_x and beta_list_x
-formula_x <- "~ c_all + A3"
+formula_x <- "~ c_all + A1 + A3"
 # Items 1-2 are affected in the following manner: 
-# level 4 probability increases as A3 increases
+# level 2 probability increases as A3 increases
 beta_list_x <- lapply(1:2, function(j) cbind(beta_list_x_temp[[j]],
-                                             A3 = c(0, 0, 0, 2)))
-beta_list_x <- c(beta_list_x, lapply(3:J, function(j) cbind(beta_list_x_temp[[j]], 
-                                               A2 = rep(0, 4))))
+                                             A1 = rep(0, 4),
+                                             A3 = c(0, 0.5, 0, 0)))
+beta_list_x <- c(beta_list_x, lapply(3:(J-2), function(j) 
+  cbind(beta_list_x_temp[[j]], A1 = rep(0, 4), A3 = rep(0, 4))))
+# Items 29-30 are affected as follows: level 2 probability decrease with A1
+beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j) 
+  cbind(beta_list_x_temp[[j]], A1 = c(0, 1, 0, 0), A3 = rep(0, 4))))
+
 V_unique <- as.data.frame(expand.grid(c_all = as.factor(1:K),
-                                      A3 = c(-8, -1.5, 0, 1.5, 8)))
+                                      A1 = c(-4, 0, 4),
+                                      A3 = c(-8, 0, 8)))
 round(get_categ_probs(beta_mat = beta_list_x[[1]], formula = formula_x,
 V_unique = V_unique), 3)
 
@@ -163,10 +169,14 @@ cor(sim_pop$X_data, sim_pop$pop$A2)
 cor(sim_pop$X_data, sim_pop$pop$A3)
 
 # Observed thetas
-# item 1 has association with A3
+# item 1 has association with A3 (higher level 2)
 t(sapply(1:3, function(k) prop.table(table(sim_pop$X_data[sim_pop$c_all == k, 1]))))
-# item 4 does not have association with A3
-t(sapply(1:3, function(k) prop.table(table(sim_pop$X_data[sim_pop$c_all == k, 4]))))
+# # item 4 has association with A2 (higher level 4)
+# t(sapply(1:3, function(k) prop.table(table(sim_pop$X_data[sim_pop$c_all == k, 4]))))
+# item 30 has association with A1 (higher level 2)
+t(sapply(1:3, function(k) prop.table(table(sim_pop$X_data[sim_pop$c_all == k, 30]))))
+# item 5 has no associations
+t(sapply(1:3, function(k) prop.table(table(sim_pop$X_data[sim_pop$c_all == k, 5]))))
 
 
 

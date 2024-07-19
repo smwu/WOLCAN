@@ -55,10 +55,12 @@ save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE,
 
 #============== Create Tables ==================================================
 
-scenarios <- 1
-scen_names <- c("Baseline: n = 2000 (5%)")
+scenarios <- c(0, 1)
+# scen_names <- c("Baseline: n = 2000 (5%)")
+scen_names <- paste0("Scen ", scenarios)
 save_names <- rep("metrics_scen", 3)
-create_app_tables_wolcan(save_path = save_path, scenarios = scenarios, 
+save_paths <- paste0(wd, sum_dir, "scen_", scenarios, "/")
+create_app_tables_wolcan(save_paths = save_paths, scenarios = scenarios, 
                          scen_names = scen_names, overall_name = "Scenario",
                          format = "html")
 

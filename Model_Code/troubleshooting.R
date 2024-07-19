@@ -45,6 +45,10 @@ for (j in 1:J) {
 
 samp_theta[1,,]
 pop_theta[1,,]
+samp_theta[3,,]
+pop_theta[3,,]
+samp_theta[30,,]
+pop_theta[30,,]
 hist(sim_pop$pop$A3, freq = FALSE, col = "darkgreen")
 hist(sim_samp$covs$A3, freq = FALSE, col=rgb(1,0,0,0.5), add = TRUE)
 
@@ -71,3 +75,35 @@ ggplot(d, aes(bar, y = 1, fill = fill)) +
   theme_classic() +
   coord_fixed(diff(breaks)[1], expand = FALSE) + # makes square blocks
   labs(x = 'max(weight)', y = 'count')
+
+### Why is unweighted performing well?
+load("/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/Results/scen_0/samp_1_wolca_results.RData")
+res_unwt <- res
+load("/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/Results/scen_0/samp_1_wolcan_results.RData")
+round(res_unwt$estimates$theta_med[1,,], 3)
+round(res$estimates_adjust$theta_med[1,,], 3)
+round(samp_theta[1,,], 3)
+round(pop_theta[1,,], 3)
+round(res_unwt$estimates$theta_med[3,,], 3)
+round(res$estimates_adjust$theta_med[3,,], 3)
+round(samp_theta[3,,], 3)
+round(pop_theta[3,,], 3)
+round(res_unwt$estimates$theta_med[30,,], 3)
+round(res$estimates_adjust$theta_med[30,,], 3)
+round(samp_theta[30,,], 3)
+round(pop_theta[30,,], 3)
+
+
+# Theta modes
+est_theta_modal <- apply(estimates$theta_med[, order_sub_est, ], c(1,2), max)
+true_theta_modal <- apply(true_params$true_theta[ , order_sub_true, ], c(1,2), max) 
+dist_modal_wolcan <- abs(est_theta_modal - true_theta_modal)
+sum(dist_modal_wolcan)  
+mean(dist_modal_wolcan)
+## Have to re-run summary_function code first for wolca
+est_theta_modal <- apply(estimates$theta_med[, order_sub_est, ], c(1,2), max)
+true_theta_modal <- apply(true_params$true_theta[ , order_sub_true, ], c(1,2), max) 
+dist_modal_wolca <- abs(est_theta_modal - true_theta_modal)
+sum(dist_modal_wolca)  
+mean(dist_modal_wolca)
+  

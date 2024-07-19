@@ -49,6 +49,7 @@
 # 
 wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R, 
                    hat_pi_R = NULL, num_post = 1000, frame_B = 1, frame_R = 1,
+                   trim_method = "t2", trim_c = 20, 
                    D = 10, parallel = TRUE, n_cores = 4, MI = TRUE, 
                    adjust = TRUE, tol = 1e-8,
                    run_adapt = TRUE, K_max = 30, adapt_seed = 1, 
@@ -88,7 +89,8 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
                                   pred_covs_R = pred_covs_R, 
                                   num_post = num_post, pi_R = pi_R, 
                                   hat_pi_R = hat_pi_R,
-                                  frame_B = frame_B, frame_R = frame_R)
+                                  frame_B = frame_B, frame_R = frame_R,
+                                  trim_method = trim_method, trim_c = trim_c)
   # Mean estimated weights
   wts <- est_weights$wts
   # Posterior distribution of weights
@@ -534,7 +536,8 @@ wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn,
 # from the BART posterior draws. Each column corresonds to a single draw. Nx(num_post).
 get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R, 
                              num_post = 1000, pi_R, hat_pi_R = NULL, 
-                             frame_B = 1, frame_R = 1) {
+                             frame_B = 1, frame_R = 1, trim_method = "t2", 
+                             trim_c = 20) {
   # Initialize output
   est_weights <- list()
   
@@ -625,8 +628,9 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
   wts_post <- t(1 / hat_pi_B_dist)
   
   ### Weight trimming
-  wts <- trim_w(wts, m = "t2", c = 20, max = 10)
-  wts_post <- apply(wts_post, 2, function(x) trim_w(x, m = "t2", c = 10, max = 10)) 
+  wts <- trim_w(wts, m = trim_method, c = trim_c, max = 10)
+  wts_post <- apply(wts_post, 2, function(x) trim_w(x, m = trim_method, 
+                                                    c = trim_c, max = 10)) 
   
   # # Normalize weights to sum to N
   # pi_B_m <- pi_B_m * N / sum(1 / pi_B_m)
