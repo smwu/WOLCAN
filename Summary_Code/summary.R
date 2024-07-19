@@ -20,6 +20,7 @@ library(parallel)
 
 # Set directories
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
+wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
 data_dir <- "Data/"    # Data directory
 res_dir <- "Results/"  # Results directory
 code_dir <- "Summary_Code/"  # Model code directory
@@ -30,28 +31,36 @@ source(paste0(wd, code_dir, "summary_functions.R"))
 
 #================ Summarize and save results ===================================
 scenario <- 1
-samp_i_seq <- 1:25
+samp_i_seq <- 1:100
 # Define path to save results
 save_path <- paste0(wd, sum_dir, "scen_", scenario, "/")
 
-save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE, 
-                  WOLCA = TRUE, save_path = save_path, wd = wd, 
-                  data_dir = data_dir, res_dir = res_dir, subset = FALSE, 
-                  dist_type = "mean_abs")
+# Create scenario results folder if it doesn't exist
+if (!dir.exists(save_path)) {
+  dir.create(file.path(save_path))
+}
 
-samp_i_seq <- 1:10
-save_path <- paste0(wd, sum_dir, "scen_", scenario, "/", "top10_")
+# Get metrics for all samples
 save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE, 
                   WOLCA = TRUE, save_path = save_path, wd = wd, 
                   data_dir = data_dir, res_dir = res_dir, subset = FALSE, 
-                  dist_type = "mean_abs")
+                  dist_type = "mean_abs", parallel = FALSE)
+
+# samp_i_seq <- 1:10
+# save_path <- paste0(wd, sum_dir, "scen_", scenario, "/", "top10_")
+# save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE, 
+#                   WOLCA = TRUE, save_path = save_path, wd = wd, 
+#                   data_dir = data_dir, res_dir = res_dir, subset = FALSE, 
+#                   dist_type = "mean_abs", parallel = TRUE)
 
 #============== Create Tables ==================================================
 
-scenarios <- 1
-scen_names <- c("Baseline: n = 2000 (5%)")
+scenarios <- c(0, 1)
+# scen_names <- c("Baseline: n = 2000 (5%)")
+scen_names <- paste0("Scen ", scenarios)
 save_names <- rep("metrics_scen", 3)
-create_app_tables_wolcan(save_path = save_path, scenarios = scenarios, 
+save_paths <- paste0(wd, sum_dir, "scen_", scenarios, "/")
+create_app_tables_wolcan(save_paths = save_paths, scenarios = scenarios, 
                          scen_names = scen_names, overall_name = "Scenario",
                          format = "html")
 

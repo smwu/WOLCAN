@@ -32,7 +32,7 @@
 # Default is 10.
 #   parallel: Boolean specifying if parallelization is to be used for the 
 # multiple imputation variance calculation (default is `TRUE`).
-#   n_cores: Number of cores to run in parallel. Default is 1.
+#   n_cores: Number of cores to run in parallel. Default is 4.
 #   adjust: Boolean specifying whether to incorporate the post-processing variance 
 # adjustment to ensure proper uncertainty intervals. Default is `TRUE`.
 #   adapt_seed: Default is 1.
@@ -49,14 +49,15 @@
 # 
 wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R, 
                    hat_pi_R = NULL, num_post = 1000, frame_B = 1, frame_R = 1,
-                   D = 10, parallel = TRUE, n_cores = 1, MI = TRUE, 
+                   trim_method = "t2", trim_c = 20, 
+                   D = 10, parallel = TRUE, n_cores = 4, MI = TRUE, 
                    adjust = TRUE, tol = 1e-8,
                    run_adapt = TRUE, K_max = 30, adapt_seed = 1, 
                    K_fixed = NULL, fixed_seed = 1, class_cutoff = 0.05,
                    n_runs = 20000, burn = 10000, thin = 5, update = 1000,
                    save_res = TRUE, save_path = NULL,
                    alpha_adapt = NULL, eta_adapt = NULL,
-                   alpha_fixed = NULL, eta_fixed = NULL, mod_stan = NULL) {
+                   alpha_fixed = NULL, eta_fixed = NULL) {
   
   # Check errors
   if (!run_adapt) {
@@ -88,7 +89,8 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
                                   pred_covs_R = pred_covs_R, 
                                   num_post = num_post, pi_R = pi_R, 
                                   hat_pi_R = hat_pi_R,
-                                  frame_B = frame_B, frame_R = frame_R)
+                                  frame_B = frame_B, frame_R = frame_R,
+                                  trim_method = trim_method, trim_c = trim_c)
   # Mean estimated weights
   wts <- est_weights$wts
   # Posterior distribution of weights
@@ -166,12 +168,13 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
                                   alpha_fixed = alpha_fixed, eta_fixed = eta_fixed)
     
     # Add variance estimates to output list
-    res$estimates_adjust <- list(pi_red = comb_estimates$pi_red, 
-                                 theta_red = comb_estimates$theta_red, 
-                                 pi_med = comb_estimates$pi_med, 
-                                 theta_med = comb_estimates$theta_med, 
-                                 c_all = comb_estimates$c_all,
-                                 pred_class_probs = comb_estimates$pred_class_probs)
+    # res$estimates_adjust <- list(pi_red = comb_estimates$pi_red, 
+    #                              theta_red = comb_estimates$theta_red, 
+    #                              pi_med = comb_estimates$pi_med, 
+    #                              theta_med = comb_estimates$theta_med, 
+    #                              c_all = comb_estimates$c_all,
+    #                              pred_class_probs = comb_estimates$pred_class_probs)
+    res$estimates_adjust <- comb_estimates
   
   } else {    # Just run fixed sampler (variance will be underestimated)
 
@@ -234,22 +237,15 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
 # applied. Default is TRUE.
 #   alpha_fixed, eta_fixed. Only non-NULL if K came from K_fixed
 get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1, 
-                        tol = 1e-8, parallel = TRUE, n_cores = 1,
+                        tol = 1e-8, parallel = TRUE, n_cores = 4,
                         adjust = TRUE, class_cutoff = 0.05, n_runs = 20000, 
                         burn = 10000, thin = 5, update = 1000,
                         alpha_fixed = NULL, eta_fixed = NULL) {
   
   # Get dimensions
-  M <- ceiling(n_runs / thin) 
+  M <- floor(n_runs / thin) - floor(burn / thin) 
   n <- nrow(x_mat)
   J <- ncol(x_mat)
-  
-  # Initialize parameter and variables across draws
-  K_red_draws <- numeric(D)
-  pi_red_draws <- vector("list", length = D)
-  theta_red_draws <- vector("list", length = D)
-  c_all_draws <- matrix(NA, nrow = D, ncol = n)
-  wts_draws <- matrix(NA, nrow = n, ncol = D)
   
   if (parallel) {  # Parallel version
     # # Number of cores available
@@ -257,19 +253,18 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
     
     # Create a cluster using sockets
     cluster <- parallel::makeCluster(n_cores)
-    # Export global functions to be available to all workers
-    clusterExport(cluster, varlist = c("wolca", "wolca_var_adjust", "catch_errors", 
-                                       "init_OLCA", "run_MCMC_Rcpp_wolca", 
-                                       "post_process_wolca", "get_estimates_wolca"))
+        # # Export global functions to be available to all workers
+        # clusterExport(cluster, varlist = c("wolca", "wolca_var_adjust", "catch_errors", 
+        #                                    "init_OLCA", "run_MCMC_Rcpp_wolca", 
+        #                                    "post_process_wolca", "get_estimates_wolca"))
+    
     # Run wolca_d in parallel
     res_all <- parLapply(cluster, 1:D, wolca_d, wts_post = wts_post, 
                          x_mat = x_mat, K = K, adjust = adjust, 
                          class_cutoff = class_cutoff, n_runs = n_runs, 
                          burn = burn, thin = thin, update = update,
                          fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
-                         eta_fixed = eta_fixed, mod_stan = mod_stan, 
-                         rcpp_path = paste0(wd, code_dir, "baysc_functions/", 
-                                            "main_Rcpp_functions.cpp"))
+                         eta_fixed = eta_fixed, D = D)
     # Shutdown cluster
     stopCluster(cluster)
     
@@ -279,31 +274,44 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                       adjust = adjust, class_cutoff = class_cutoff, 
                       n_runs = n_runs, burn = burn, thin = thin, update = update,
                       fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
-                      eta_fixed = eta_fixed, mod_stan = mod_stan)
+                      eta_fixed = eta_fixed, D = D)
   }
   
-  # Extract results for all draws
-  for (d in 1:D) {
+  # Keep only the draws with K_red = K_fixed
+  K_red_draws_all <- sapply(1:D, function(d) res_all[[d]]$K_red)
+  keep_d <- which(K_red_draws_all == K)
+  D_red <- length(keep_d)
+  
+  # Initialize parameter and variables across draws
+  K_red_draws <- numeric(D_red)  # restricted to draws with K_red = K_fixed
+  pi_red_draws <- vector("list", length = D_red)
+  theta_red_draws <- vector("list", length = D_red)
+  c_all_draws <- matrix(NA, nrow = D_red, ncol = n)
+  wts_draws <- matrix(NA, nrow = n, ncol = D_red)
+  
+  # Extract results for draws with okay K
+  for (d in 1:D_red) {
+            # for (d in 1:D) {
     # Extract results
-    est_d <- res_all[[d]]
+    est_d <- res_all[[keep_d[d]]]
+    
     K_red_draws[d] <- est_d$K_red
     c_all_draws[d, ] <- est_d$c_all
     pi_red_draws[[d]] <- est_d$pi_red
     theta_red_draws[[d]] <- est_d$theta_red
     wts_draws[, d] <- est_d$wts
     
-    # Add dimensions if necessary
-    K_d <- dim(pi_red_draws[[d]])[2]
-    if (K_d < K) {
-      # Add NA's to full MCMC outputs for the missing classes
-      miss_dims <- K - K_d
-      pi_red_draws[[d]] <- abind(pi_red_draws[[d]], 
-                                 array(NA, dim=c(M, miss_dims)), along=2)
-      theta_red_draws[[d]] <- abind(theta_red_draws[[d]], 
-                                    array(NA, dim=c(M, J, miss_dims, 
-                                              dim(theta_red_draws[[d]])[4])), 
-                                    along = 3)
-    }
+    # # Add dimensions if necessary
+    # if (K_d < K) {
+    #   # Add NA's to full MCMC outputs for the missing classes
+    #   miss_dims <- K - K_d
+    #   pi_red_draws[[d]] <- abind(pi_red_draws[[d]], 
+    #                              array(NA, dim=c(M, miss_dims)), along=2)
+    #   theta_red_draws[[d]] <- abind(theta_red_draws[[d]], 
+    #                                 array(NA, dim=c(M, J, miss_dims, 
+    #                                           dim(theta_red_draws[[d]])[4])), 
+    #                                 along = 3)
+    # }
   }
   
   # Clustering to harmonize classes
@@ -345,9 +353,9 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
   unique_red_classes <- unique(red_c_all)
   
   # For each draw, relabel new classes using the most common old class assignment
-  pi_red_new <- vector("list", length = D)
-  theta_red_new <- vector("list", length = D)
-  for (d in 1:D) {
+  pi_red_new <- vector("list", length = D_red)
+  theta_red_new <- vector("list", length = D_red)
+  for (d in 1:D_red) {
     # Initialize pi and theta
     pi <- matrix(NA, nrow = M, ncol = K)
     theta <- array(NA, dim = c(M, J, K, dim(theta_red_draws[[d]])[4]))
@@ -403,15 +411,15 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
   
   # Combine duplicated classes and re-normalize pi to sum to 1
   pi_red <- pi_red_stack[, unique_classes, drop = FALSE] # Initialize pi for unique classes
-  if (K_red < dim(pi_red_stack)[2]) {  # Check if there are duplicated classes
-    for (k in 1:K_red) {
-      # Find duplicated modal theta patterns
-      dupes_k <- apply(theta_modes, 2, function(x)  
-        identical(x,theta_modes[, unique_classes[k]]))
-      # Combine class proportions for all duplicated patterns together
-      pi_red[, k] <- apply(as.matrix(pi_red_stack[, dupes_k]), 1, sum)  
-    }
-  }
+      # if (K_red < dim(pi_red_stack)[2]) {  # Check if there are duplicated classes
+      #   for (k in 1:K_red) {
+      #     # Find duplicated modal theta patterns
+      #     dupes_k <- apply(theta_modes, 2, function(x)  
+      #       identical(x,theta_modes[, unique_classes[k]]))
+      #     # Combine class proportions for all duplicated patterns together
+      #     pi_red[, k] <- apply(as.matrix(pi_red_stack[, dupes_k]), 1, sum)  
+      #   }
+      # }
   # Re-normalize to ensure pi sums to 1 for each iteration
   pi_red = pi_red / rowSums(pi_red)  
   
@@ -450,7 +458,8 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
     c_all[i] <- LaplacesDemon::rcat(n = 1, p = pred_class_probs[i, ])
   }
   
-  comb_estimates <- list(K_red_draws = K_red_draws, c_all_draws = c_all_draws, 
+  comb_estimates <- list(K_red_draws_all = K_red_draws_all, 
+                         K_red_draws = K_red_draws, c_all_draws = c_all_draws, 
                          pi_red = pi_red, theta_red = theta_red,
                          pi_med = pi_med, theta_med = theta_med, 
                          c_all = c_all, pred_class_probs = pred_class_probs,
@@ -467,32 +476,38 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
 #   adjust: Boolean indicating if post-processing variance adjustment should be applied
 # inherit parameters from get_var_dir
 wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn, 
-                    thin, update, fixed_seed, alpha_fixed, eta_fixed, 
-                    mod_stan = NULL, rcpp_path = NULL) {
+                    thin, update, fixed_seed, alpha_fixed, eta_fixed, D) {
   
-  # Source Rcpp functions from baysc package
-  Rcpp::sourceCpp(rcpp_path)
+  # # Source Rcpp functions from baysc package
+  # Rcpp::sourceCpp(rcpp_path)
   
   print(paste0("Draw ", d))
   
-  # Draw from weights posterior
-  draw <- sample(1:ncol(wts_post), size = 1)
+  # Get quantiles of medians of weights posterior
+  col_meds <- c(apply(wts_post, 2, median))
+  cutoffs <- (seq(1, D, length.out = D) - 0.5) / D
+  med_quants <- stats::quantile(x = col_meds, probs = cutoffs)
+  
+  # Draw from weights posterior closest to quantile
+  draw <- which.min(abs(col_meds - med_quants[d]))
   wts_d <- c(wts_post[, draw])
+      # draw <- sample(1:ncol(wts_post), size = 1)
+      # wts_d <- c(wts_post[, draw])
   
   # Initialize fixed sampler hyperparameters
   if (is.null(alpha_fixed)) {
-    alpha_fixed = rep(K, K)  # not sparsity-inducing
+    alpha_fixed = rep(1, K)  # not sparsity-inducing
   }
   # Run fixed sampler
-  res_d <- wolca(x_mat = x_mat, sampling_wt = wts_d, run_sampler = "fixed", 
+  res_d <- baysc::wolca(x_mat = x_mat, sampling_wt = wts_d, run_sampler = "fixed", 
                         K_fixed = K, fixed_seed = fixed_seed, 
                         alpha_fixed = alpha_fixed, eta_fixed = eta_fixed, 
                         class_cutoff = class_cutoff, n_runs = n_runs, burn = burn, 
                         thin = thin, update = update, save_res = FALSE)
   # Apply post-processing variance adjustment for pseudo-likelihood if desired
   if (adjust) {
-    res_d <- wolca_var_adjust(res = res_d, num_reps = 100, save_res = FALSE, 
-                              adjust_seed = fixed_seed, mod_stan = mod_stan)
+    res_d <- baysc::wolca_var_adjust(res = res_d, num_reps = 100, save_res = FALSE, 
+                              adjust_seed = fixed_seed)
     # Get estimates
     est_d <- res_d$estimates_adjust
     est_d$K_red <- res_d$estimates$K_red
@@ -521,7 +536,8 @@ wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn,
 # from the BART posterior draws. Each column corresonds to a single draw. Nx(num_post).
 get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R, 
                              num_post = 1000, pi_R, hat_pi_R = NULL, 
-                             frame_B = 1, frame_R = 1) {
+                             frame_B = 1, frame_R = 1, trim_method = "t2", 
+                             trim_c = 20) {
   # Initialize output
   est_weights <- list()
   
@@ -612,8 +628,9 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
   wts_post <- t(1 / hat_pi_B_dist)
   
   ### Weight trimming
-  wts <- trim_w(wts, m = "t2", c = 10, max = 10)
-  wts_post <- apply(wts_post, 2, function(x) trim_w(x, m = "t2", c = 10, max = 10)) 
+  wts <- trim_w(wts, m = trim_method, c = trim_c, max = 10)
+  wts_post <- apply(wts_post, 2, function(x) trim_w(x, m = trim_method, 
+                                                    c = trim_c, max = 10)) 
   
   # # Normalize weights to sum to N
   # pi_B_m <- pi_B_m * N / sum(1 / pi_B_m)

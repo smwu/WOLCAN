@@ -2,17 +2,18 @@
 # Create pseudo-weights and run WOLCAN model
 # Author: Stephanie Wu
 # Date created: 2024/04/16
-# Date updated: 2024/05/29
+# Date updated: 2024/07/10
 #=================================================
 
 # Read in two command line arguments
 args <- commandArgs(trailingOnly = TRUE)
 scenario <- args[[1]]   # Simulation scenario
 samp_i <- args[[2]]     # Sample number
+samp_i <- as.numeric(samp_i)
 
 # Whether or not baysc package has been installed. If FALSE, local functions 
 # will be used instead
-baysc_package = FALSE
+baysc_package = TRUE
 
 # Load libraries
 library(BART)  # BART
@@ -91,18 +92,20 @@ if (already_done) {
   x_mat <- sim_samp_B$X_data  # Multivariate categorical variables
   dat_B <- data.frame(sim_samp_B$covs)  # Covariates for NPS
   dat_R <- data.frame(sim_samp_R$covs)  # Covariates for reference
-  pred_covs_B <- c("A1", "A2", "A1A2")  # Covariates to predict NPS selection
-  pred_covs_R <- c("A1", "A2", "A1A2")  # Covariates to predict RS selection
+  pred_covs_B <- c("A1", "A2", "A1A2", "A3")  # Covariates to predict NPS selection
+  pred_covs_R <- c("A1", "A2", "A1A2", "A3")  # Covariates to predict RS selection
   pi_R <- sim_samp_R$pi_R  # RS selection probabilites for those in RS
   hat_pi_R <- NULL  # RS selection probabilities for those in NPS
   num_post <- 1000  # Number of posterior BART draws for estimating weights
   frame_B <- 1  # Coverage probability of NPS frame
   frame_R <- 1  # Coverage probability of RS frame
+  trim_method = "t2"  # Trimming method using IQR
+  trim_c = 20         # Trimming constant
   
   # Model estimation
-  D <- 10            # Number of sets of MI pseudo-weights
+  D <- 20            # Number of sets of MI pseudo-weights
   parallel <- TRUE   # Whether to parallelize for MI
-  n_cores <- 4       # Number of cores to use for parallelization
+  n_cores <- 8       # Number of cores to use for parallelization
   MI <- TRUE         # Whether to run MI procedure for variance estimation
   adjust <- TRUE     # Whether to adjust variance for pseudo-likelihood
   tol <- 1e-8        # Underflow tolerance
@@ -115,11 +118,11 @@ if (already_done) {
   thin <- 5          # Thinning
   update <- 5000     # Display update frequency
   
-  # For tests
-  n_runs <- 1000
-  burn <- 500
-  thin <- 5
-  update <- 500
+  # # For tests
+  # n_runs <- 1000
+  # burn <- 500
+  # thin <- 5
+  # update <- 500
   
   ### Modifications based on scenario
   if (scenario == 2) {  # No propagation of weights uncertainty
@@ -136,16 +139,16 @@ if (already_done) {
   res <- wolcan(x_mat = x_mat, dat_B = dat_B, dat_R = dat_R, 
                 pred_covs_B = pred_covs_B, pred_covs_R = pred_covs_R, 
                 pi_R = pi_R, hat_pi_R = hat_pi_R, num_post = num_post, 
-                frame_B = frame_B, frame_R = frame_R, D = D, 
-                parallel = parallel, n_cores = n_cores, 
+                frame_B = frame_B, frame_R = frame_R, trim_method = trim_method, 
+                trim_c = trim_c, D = D, parallel = parallel, n_cores = n_cores, 
                 MI = MI, adjust = adjust, tol = tol, run_adapt = run_adapt, 
                 K_max = K_max, adapt_seed = adapt_seed, K_fixed = NULL, 
                 fixed_seed = fixed_seed, class_cutoff = 0.05, 
                 n_runs = n_runs, burn = burn, thin = thin, update = update, 
-                save_res = TRUE, save_path = save_path, mod_stan = mod_stan)
+                save_res = TRUE, save_path = save_path)
   
   ### Run unweighted model
-  if (scenario %in% c(1, 7:11)) {
+  if (scenario %in% c(0, 1, 7:11)) {
     res_unwt <- wolca(x_mat = x_mat, sampling_wt = rep(1, nrow(x_mat)), 
                              run_sampler = "both", K_max = K_max, 
                              adapt_seed = adapt_seed, class_cutoff = 0.05, 
