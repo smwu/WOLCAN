@@ -1,8 +1,0 @@
-[1,"Installing 'pROC' ...\n"]
-[2,"trying URL 'https://cran.rstudio.com/bin/macosx/big-sur-arm64/contrib/4.3/pROC_1.18.5.tgz'\n"]
-[2,"Content type 'application/x-gzip' length 1128880 bytes (1.1 MB)\n=="]
-[2,"=========================================="]
-[2,"=="]
-[1,"The downloaded binary packages are in\n"]
-[1,"\t/var/folders/c2/lj25wkzj23d3g8_r2hj0l9nr0000gn/T//RtmpquYRJu/downloaded_packages\n"]
-[2,"====\ndownloaded 1.1 MB\n\n\n\n✔ Package 'pROC' successfully installed.\n"]

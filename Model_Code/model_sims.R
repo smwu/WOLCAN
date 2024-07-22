@@ -80,10 +80,16 @@ if (already_done) {
   }
   
   ### Read in population and sample data
-  load(paste0(wd, data_dir, "scen_", scenario, "/sim_pop_wolcan.RData"))
-  load(paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", samp_i, "_B_wolcan.RData"))
-  load(paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", samp_i, "_R_wolcan.RData"))
-  
+  if (scenario %in% c(1, 2, 3, 4, 5)) {
+    load(paste0(wd, data_dir, "scen_", 1, "/sim_pop_wolcan.RData"))
+    load(paste0(wd, data_dir, "scen_", 1, "/sim_samp_", samp_i, "_B_wolcan.RData"))
+    load(paste0(wd, data_dir, "scen_", 1, "/sim_samp_", samp_i, "_R_wolcan.RData"))
+  } else {
+    load(paste0(wd, data_dir, "scen_", scenario, "/sim_pop_wolcan.RData"))
+    load(paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", samp_i, "_B_wolcan.RData"))
+    load(paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", samp_i, "_R_wolcan.RData"))
+  }
+    
   # # Number of overlapping individuals
   # length(intersect(sim_samp_R$ind_R, sim_samp_B$ind_B))
   
@@ -106,9 +112,11 @@ if (already_done) {
   D <- 20            # Number of sets of MI pseudo-weights
   parallel <- TRUE   # Whether to parallelize for MI
   n_cores <- 8       # Number of cores to use for parallelization
+  wts_adj <- "MI"    # Adjustment method to account for weights uncertainty
   MI <- TRUE         # Whether to run MI procedure for variance estimation
   adjust <- TRUE     # Whether to adjust variance for pseudo-likelihood
   tol <- 1e-8        # Underflow tolerance
+  num_reps <- 100    # Number of bootstrap replicates for WS adjustment
   run_adapt <- TRUE  # Whether to run adaptive sampler to get K
   K_max <- 30          # Max number of latent classes for adaptive sampler
   adapt_seed <- samp_i # Seed for adaptive sampler
@@ -125,13 +133,15 @@ if (already_done) {
   # update <- 500
   
   ### Modifications based on scenario
-  if (scenario == 2) {  # No propagation of weights uncertainty
-    MI <- FALSE
-  }
-  if (scenario == 3) {  # No pseudo-likelihood adjustment
+  if (scenario == 2) {  # WS one-step adjustment with draws
+    wts_adj = "WS all"
+  } else if (scenario == 3) {  # WS one-step adjustment with draws
+    wts_adj = "WS mean"
+  } else if (scenario == 4) {  # No pseudo-likelihood adjustment
     adjust = FALSE
-  }
-  if (scenario == 4) {  # RS weights known for NPS
+  } else if (scenario == 5) {  # No propagation of weights uncertainty
+    wts_adj = "none"
+  } else if (scenario == 14) {  # RS weights known for NPS
     hat_pi_R = sim_samp_B$true_pi_R
   } 
   
@@ -140,8 +150,9 @@ if (already_done) {
                 pred_covs_B = pred_covs_B, pred_covs_R = pred_covs_R, 
                 pi_R = pi_R, hat_pi_R = hat_pi_R, num_post = num_post, 
                 frame_B = frame_B, frame_R = frame_R, trim_method = trim_method, 
-                trim_c = trim_c, D = D, parallel = parallel, n_cores = n_cores, 
-                MI = MI, adjust = adjust, tol = tol, run_adapt = run_adapt, 
+                trim_c = trim_c, D = D, parallel = parallel, n_cores = n_cores,
+                wts_adj = wts_adj, adjust = adjust, tol = tol, 
+                num_reps = num_reps, run_adapt = run_adapt, 
                 K_max = K_max, adapt_seed = adapt_seed, K_fixed = NULL, 
                 fixed_seed = fixed_seed, class_cutoff = 0.05, 
                 n_runs = n_runs, burn = burn, thin = thin, update = update, 

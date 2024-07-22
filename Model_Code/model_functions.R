@@ -45,13 +45,15 @@
 #   MI: Boolean indicating if multiple imputation procedure should be performed
 # for variance estimation that incorporates variability in the pseudo-weights. 
 # Default is `TRUE`.
+#   num_reps: Number of bootstrap replicates for the WS variance adjustment
 # Outputs:
 # 
 wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R, 
                    hat_pi_R = NULL, num_post = 1000, frame_B = 1, frame_R = 1,
                    trim_method = "t2", trim_c = 20, 
-                   D = 10, parallel = TRUE, n_cores = 4, MI = TRUE, 
-                   adjust = TRUE, tol = 1e-8,
+                   D = 10, parallel = TRUE, n_cores = 4, 
+                   wts_adj = c("MI", "WS all", "WS mean", "none"), 
+                   adjust = TRUE, tol = 1e-8, num_reps = 100,
                    run_adapt = TRUE, K_max = 30, adapt_seed = 1, 
                    K_fixed = NULL, fixed_seed = 1, class_cutoff = 0.05,
                    n_runs = 20000, burn = 10000, thin = 5, update = 1000,
@@ -154,7 +156,7 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
     }
   }
   
-  if (MI) {
+  if (wts_adj == "MI") {
     # Get estimates by running the WOLCA fixed sampler for multiple draws from the 
     # weights posterior, using parallelization if desired. 
     # Apply post-processing variance adjustment for proper variance estimation.
@@ -168,16 +170,17 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
                                   alpha_fixed = alpha_fixed, eta_fixed = eta_fixed)
     
     # Add variance estimates to output list
-    # res$estimates_adjust <- list(pi_red = comb_estimates$pi_red, 
-    #                              theta_red = comb_estimates$theta_red, 
-    #                              pi_med = comb_estimates$pi_med, 
-    #                              theta_med = comb_estimates$theta_med, 
-    #                              c_all = comb_estimates$c_all,
-    #                              pred_class_probs = comb_estimates$pred_class_probs)
     res$estimates_adjust <- comb_estimates
   
-  } else {    # Just run fixed sampler (variance will be underestimated)
-
+  } else {    # Run fixed sampler
+    
+    print("Running fixed sampler...")
+    
+    # Set seed
+    if (!is.null(fixed_seed)) {
+      set.seed(fixed_seed)
+    }
+    
     # Initialize OLCA model using fixed number of classes. Obtain pi, theta, c_all
     OLCA_params <- init_OLCA(alpha = alpha_fixed, eta = eta_fixed, n = n,
                              K = K, J = J, R = R)
@@ -198,6 +201,24 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
     res$estimates <- get_estimates_wolca(MCMC_out = res$MCMC_out, 
                                      post_MCMC_out = res$post_MCMC_out, n = n, J = J,
                                      x_mat = x_mat)
+    
+    if (wts_adj == "WS all") {
+      print("Accounting for weights uncertainty...")
+      res$estimates_adjust <- suppressMessages(
+        get_var_adj(D = D, K = K, res = res, wts_post = wts_post, tol = tol,
+                    num_reps = num_reps, alpha = alpha_fixed, eta = eta_fixed, 
+                    save_res = save_res, save_path = save_path, 
+                    adjust_seed = fixed_seed))
+    } else if (wts_adj == "WS mean") {
+      print("Using mean weights...")
+      res$estimates_adjust <- suppressMessages(
+        get_var_adj_mean(K = K, res = res, wts = wts, tol = tol, 
+                         num_reps = num_reps, alpha = alpha_fixed, 
+                         eta = eta_fixed, save_res = save_res, 
+                         save_path = save_path, adjust_seed = fixed_seed))
+    } else {
+      print("Not accounting for weights uncertainty...")
+    }
   }
   
   #================= Save and return output ====================================
@@ -223,6 +244,407 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
   return(res)
   
 }
+
+# Only use the mean posterior weights
+# wts: mean weights
+get_var_adj_mean <- function(K, res, wts, tol, num_reps = 100, 
+                             alpha = NULL, eta = NULL,  
+                        save_res = TRUE, save_path = NULL, 
+                        adjust_seed = NULL) {
+  
+  # Begin runtime tracker
+  start_time <- Sys.time()
+  
+  # Set seed
+  if (!is.null(adjust_seed)) {
+    set.seed(adjust_seed)
+  }
+  
+  #================= Extract dimensions and catch errors =======================
+  # Check num_reps
+  if ((num_reps %% 100 != 0) | num_reps < 1) {
+    stop("num_reps must be a whole number greater than 0, recommended to be at least 50.
+    More replicates will lead to more accurate results but will take longer to run.")
+  }
+  
+  # Extract data elements into the global environment
+  J <- res$data_vars$J
+  R_j <- res$data_vars$R_j
+  R <- res$data_vars$R
+  n <- res$data_vars$n
+  x_mat <- res$data_vars$x_mat
+  w_all <- wts
+  
+  #================= Initialize hyperparameters ================================
+  # Default hyperparameters for pi and theta
+  if (is.null(alpha)) {
+    alpha <- rep(1, K) / K   # Hyperparameter for prior for pi
+  }
+  if (is.null(eta)) {
+    # Hyperparameter for prior for theta
+    # Unviable categories have value 0.01 to prevent rank deficiency issues
+    eta <- matrix(0.01, nrow = J, ncol = R) 
+    for (j in 1:J) {
+      eta[j, 1:R_j[j]] <- rep(1, R_j[j]) 
+    }
+  }
+  
+  #=============== Run Stan model ==============================================
+  print("Running variance adjustment")
+  
+  # Define data for Stan model
+  data_stan <- list(K = K, J = J, R = R, n = n, X = x_mat, weights = w_all, 
+                    alpha = alpha, eta = eta)
+  
+  # Stan parameters of interest
+  par_stan <- c('pi', 'theta')  # subset of parameters interested in
+  
+  # Stan model
+  mod_stan <- stanmodels$WOLCA_main
+  
+  # Run Stan model
+  # Stan will pass warnings from calling 0 chains, but will still create an 
+  # out_stan object for the 'grad_log_prob()' method
+  out_stan <- rstan::sampling(object = mod_stan, data = data_stan, 
+                              pars = par_stan, chains = 0, iter = 0, refresh = 0)
+  
+  #=============== Convert to unconstrained parameters =========================
+  # Convert params from constrained space to unconstrained space
+  unc_par_hat <- rstan::unconstrain_pars(out_stan, 
+                                         list("pi" = res$estimates$pi_med,
+                                              "theta" = res$estimates$theta_med))
+  # Get posterior MCMC samples in unconstrained space for all parameters
+  M <- dim(res$estimates$pi_red)[1]
+  unc_par_samps <- lapply(1:M, unconstrain_wolca, stan_model = out_stan, K = K, 
+                          pi = res$estimates$pi_red, 
+                          theta = res$estimates$theta_red)
+  unc_par_samps <- matrix(unlist(unc_par_samps), byrow = TRUE, nrow = M)
+  
+  #=============== Post-processing adjustment in unconstrained space ===========
+  # Estimate Hessian
+  H_hat <- -1*stats::optimHess(unc_par_hat, 
+                               gr = function(x){rstan::grad_log_prob(out_stan, x)})
+
+
+  ### Create survey replicates 
+  # Survey data frame for specifying survey design
+  # Clusters are simply individuals
+  svy_data <- data.frame(cluster_id = 1:nrow(x_mat), x_mat = x_mat, 
+                         w_all = w_all)
+  # Specify survey design
+  svydes <- survey::svydesign(ids = ~cluster_id, weights = ~w_all,
+                              data = svy_data)
+  # Create svrepdesign
+  svyrep <- survey::as.svrepdesign(design = svydes, type = "mrbbootstrap",
+                                   replicates = num_reps)
+  # Get survey replicates and gradient for each replicate
+  rep_temp <- survey::withReplicates(design = svyrep, theta = grad_par,
+                                     stan_mod = mod_stan, stan_data = data_stan,
+                                     par_stan = par_stan, u_pars = unc_par_hat)
+  # Empirical variance of gradient across replicates
+  J_hat <- stats::vcov(rep_temp)
+  
+  # Compute adjustment
+  H_inv <- solve(H_hat)
+  V1 <- H_inv %*% J_hat %*% H_inv
+  
+  # Check for issues with negative diagonals
+  if (min(diag(V1)) < 0) {
+    print("V1 has negative variances")
+  }
+  if (min(diag(H_inv)) < 0) {
+    print("H_inv has negative variances")
+  }
+  # If matrices are not p.d. due to rounding issues, convert to nearest p.d. 
+  # matrix using method proposed in Higham (2002)
+  if (min(Re(eigen(V1)$values)) < 0) { 
+    V1_pd <- Matrix::nearPD(V1)
+    R1 <- chol(V1_pd$mat)
+    V1_pd_diff <- sum(abs(eigen(V1)$values - eigen(V1_pd$mat)$values))
+    print(paste0("V1: absolute eigenvalue difference to nearest p.d. matrix: ", 
+                 V1_pd_diff))
+  } else {
+    R1 <- chol(V1)
+  }
+  if (min(Re(eigen(H_inv)$values)) < 0) {
+    H_inv_pd <- Matrix::nearPD(H_inv)
+    R2_inv <- chol(H_inv_pd$mat)
+    H_inv_pd_diff <- sum(abs(eigen(H_inv)$values - eigen(H_inv_pd$mat)$values))
+    print(paste0("H_inv: absolute eigenvalue difference to nearest p.d. matrix: ", 
+                 H_inv_pd_diff))
+    if (H_inv_pd_diff > 5) {
+      stop("NaNs created during variance adjustment, likely due to lack of 
+      smoothness in the posterior. Please run the sampler for more iterations or 
+      do not run variance adjustment.")
+    }
+  } else {
+    R2_inv <- chol(H_inv)
+  }
+  # Obtain the variance adjustment matrix
+  R2 <- solve(R2_inv)
+  R2R1 <- R2 %*% R1
+  
+  # Apply variance adjustment to parameters
+  par_adj <- apply(unc_par_samps, 1, DEadj, par_hat = unc_par_hat, R2R1 = R2R1, 
+                   simplify = FALSE)
+  par_adj <- matrix(unlist(par_adj), byrow=TRUE, nrow=M)
+  
+  #=============== Convert adjusted to constrained space =======================
+  # Constrained adjusted parameters for all MCMC samples
+  pi_red_adj <- matrix(NA, nrow=M, ncol=K)
+  theta_red_adj <- array(NA, dim=c(M, J, K, R))
+  for (i in 1:M) {
+    ##### FIX WITH CUSTOMIZED ERROR
+    constr_pars <- rstan::constrain_pars(out_stan, par_adj[i,])
+    pi_red_adj[i, ] <- constr_pars$pi
+    theta_red_adj[i,,,] <- constr_pars$theta
+  }
+  
+  #=============== Output adjusted parameters ==================================
+  # Re-normalize pi and theta for each iteration
+  pi_red_adj = pi_red_adj / rowSums(pi_red_adj)  
+  theta_red_adj <- plyr::aaply(theta_red_adj, c(1, 2, 3), function(x) x / sum(x),
+                               .drop = FALSE) 
+  
+  # Get posterior median estimates
+  pi_med_adj <- apply(pi_red_adj, 2, stats::median)
+  theta_med_adj <- apply(theta_red_adj, c(2,3,4), stats::median)
+  
+  # Renormalize posterior median estimates for pi and theta to sum to 1
+  pi_med_adj <- pi_med_adj / sum(pi_med_adj)  
+  theta_med_adj <- plyr::aaply(theta_med_adj, c(1, 2), function(x) x / sum(x),
+                               .drop = FALSE)  # Re-normalize
+  
+  #================= Save and return output ====================================
+  # Stop runtime tracker
+  runtime <- Sys.time() - start_time
+  # Add variance adjustment runtime to overall runtime
+  sum_runtime <- runtime + res$runtime
+  res$runtime <- sum_runtime
+  
+  estimates_adjust <- list(pi_red = pi_red_adj, theta_red = theta_red_adj, 
+                           pi_med = pi_med_adj, theta_med = theta_med_adj, 
+                           c_all = res$estimates$c_all,
+                           pred_class_probs = res$estimates$pred_class_probs)
+  
+  return(estimates_adjust)
+}
+
+
+# wts_post: (n1)xM posterior distribution of weights for individuals in the NPS, 
+# with each column corresponding to a posterior draw
+get_var_adj <- function(D, K, res, wts_post, tol, num_reps = 100, 
+                             alpha = NULL, eta = NULL,  
+                             save_res = TRUE, save_path = NULL, 
+                             adjust_seed = NULL) {
+  
+  # Begin runtime tracker
+  start_time <- Sys.time()
+  
+  # Set seed
+  if (!is.null(adjust_seed)) {
+    set.seed(adjust_seed)
+  }
+  
+  #================= Extract dimensions and catch errors =======================
+  # Check num_reps
+  if ((num_reps %% 100 != 0) | num_reps < 1) {
+    stop("num_reps must be a whole number greater than 0, recommended to be at least 50.
+    More replicates will lead to more accurate results but will take longer to run.")
+  }
+  
+  # Extract data elements into the global environment
+  J <- res$data_vars$J
+  R_j <- res$data_vars$R_j
+  R <- res$data_vars$R
+  n <- res$data_vars$n
+  x_mat <- res$data_vars$x_mat
+  
+  #================= Initialize hyperparameters ================================
+  # Default hyperparameters for pi and theta
+  if (is.null(alpha)) {
+    alpha <- rep(1, K) / K   # Hyperparameter for prior for pi
+  }
+  if (is.null(eta)) {
+    # Hyperparameter for prior for theta
+    # Unviable categories have value 0.01 to prevent rank deficiency issues
+    eta <- matrix(0.01, nrow = J, ncol = R) 
+    for (j in 1:J) {
+      eta[j, 1:R_j[j]] <- rep(1, R_j[j]) 
+    }
+  }
+  
+  #=============== Run variance adjustment for each set of weights =============
+  print("Running variance adjustment")
+  
+  # Normalize posterior weight distribution to sum to the sample size
+  w_all_post <- apply(wts_post, 2, function(wts_l) wts_l / (sum(wts_l) / n))
+  
+  # Get quantiles of medians of weights posterior
+  col_meds <- c(apply(w_all_post, 2, median))
+  cutoffs <- (seq(1, D, length.out = D) - 0.5) / D
+  med_quants <- stats::quantile(x = col_meds, probs = cutoffs)
+  
+  # Initialize parameter and variables across draws
+  pi_red_draws <- vector("list", length = D)
+  theta_red_draws <- vector("list", length = D)
+  wts_draws <- matrix(NA, nrow = n, ncol = D)
+  
+  for (d in 1:D) {  # For each posterior weight set
+    print(paste0("Draw ", d))
+    # Draw from weights posterior closest to quantile
+    draw <- which.min(abs(col_meds - med_quants[d]))
+    w_all <- c(w_all_post[, draw])
+    wts_draws[, d] <- wts_post[, draw]
+    
+    #=============== Run Stan model ==============================================
+    
+    # Define data for Stan model
+    data_stan <- list(K = K, J = J, R = R, n = n, X = x_mat, weights = w_all, 
+                      alpha = alpha, eta = eta)
+    
+    # Stan parameters of interest
+    par_stan <- c('pi', 'theta')  # subset of parameters interested in
+    
+    # Stan model
+    mod_stan <- stanmodels$WOLCA_main
+    
+    # Run Stan model
+    # Stan will pass warnings from calling 0 chains, but will still create an 
+    # out_stan object for the 'grad_log_prob()' method
+    out_stan <- rstan::sampling(object = mod_stan, data = data_stan, 
+                                pars = par_stan, chains = 0, iter = 0, refresh = 0)
+    
+    #=============== Convert to unconstrained parameters =========================
+    # Convert params from constrained space to unconstrained space
+    unc_par_hat <- rstan::unconstrain_pars(out_stan, 
+                                           list("pi" = res$estimates$pi_med,
+                                                "theta" = res$estimates$theta_med))
+    # Get posterior MCMC samples in unconstrained space for all parameters
+    M <- dim(res$estimates$pi_red)[1]
+    unc_par_samps <- lapply(1:M, unconstrain_wolca, stan_model = out_stan, K = K, 
+                            pi = res$estimates$pi_red, 
+                            theta = res$estimates$theta_red)
+    unc_par_samps <- matrix(unlist(unc_par_samps), byrow = TRUE, nrow = M)
+    
+    #=============== Post-processing adjustment in unconstrained space ===========
+    # Estimate Hessian
+    H_hat <- -1*stats::optimHess(unc_par_hat, 
+                                 gr = function(x){rstan::grad_log_prob(out_stan, x)})
+    
+    ### Create survey replicates 
+    # Survey data frame for specifying survey design
+    # Clusters are simply individuals
+    svy_data <- data.frame(cluster_id = 1:nrow(x_mat), x_mat = x_mat, 
+                           w_all = w_all)
+    # Specify survey design
+    svydes <- survey::svydesign(ids = ~cluster_id, weights = ~w_all,
+                                data = svy_data)
+    # Create svrepdesign
+    svyrep <- survey::as.svrepdesign(design = svydes, type = "mrbbootstrap",
+                                     replicates = num_reps)
+    # Get survey replicates and gradient for each replicate
+    rep_temp <- survey::withReplicates(design = svyrep, theta = grad_par,
+                                       stan_mod = mod_stan, stan_data = data_stan,
+                                       par_stan = par_stan, u_pars = unc_par_hat)
+    # Empirical variance of gradient across replicates
+    J_hat <- stats::vcov(rep_temp)
+    
+    # Compute adjustment
+    H_inv <- solve(H_hat)
+    V1 <- H_inv %*% J_hat %*% H_inv
+    
+    # Check for issues with negative diagonals
+    if (min(diag(V1)) < 0) {
+      print("V1 has negative variances")
+    }
+    if (min(diag(H_inv)) < 0) {
+      print("H_inv has negative variances")
+    }
+    # If matrices are not p.d. due to rounding issues, convert to nearest p.d. 
+    # matrix using method proposed in Higham (2002)
+    if (min(Re(eigen(V1)$values)) < 0) { 
+      V1_pd <- Matrix::nearPD(V1)
+      R1 <- chol(V1_pd$mat)
+      V1_pd_diff <- sum(abs(eigen(V1)$values - eigen(V1_pd$mat)$values))
+      print(paste0("V1: absolute eigenvalue difference to nearest p.d. matrix: ", 
+                   V1_pd_diff))
+    } else {
+      R1 <- chol(V1)
+    }
+    if (min(Re(eigen(H_inv)$values)) < 0) {
+      H_inv_pd <- Matrix::nearPD(H_inv)
+      R2_inv <- chol(H_inv_pd$mat)
+      H_inv_pd_diff <- sum(abs(eigen(H_inv)$values - eigen(H_inv_pd$mat)$values))
+      print(paste0("H_inv: absolute eigenvalue difference to nearest p.d. matrix: ", 
+                   H_inv_pd_diff))
+      if (H_inv_pd_diff > 5) {
+        stop("NaNs created during variance adjustment, likely due to lack of 
+      smoothness in the posterior. Please run the sampler for more iterations or 
+      do not run variance adjustment.")
+      }
+    } else {
+      R2_inv <- chol(H_inv)
+    }
+    # Obtain the variance adjustment matrix
+    R2 <- solve(R2_inv)
+    R2R1 <- R2 %*% R1
+    
+    # Apply variance adjustment to parameters
+    par_adj <- apply(unc_par_samps, 1, DEadj, par_hat = unc_par_hat, R2R1 = R2R1, 
+                     simplify = FALSE)
+    par_adj <- matrix(unlist(par_adj), byrow=TRUE, nrow=M)
+    
+    #=============== Convert adjusted to constrained space =======================
+    # Constrained adjusted parameters for all MCMC samples
+    pi_red_adj <- matrix(NA, nrow=M, ncol=K)
+    theta_red_adj <- array(NA, dim=c(M, J, K, R))
+    for (i in 1:M) {
+      ##### FIX WITH CUSTOMIZED ERROR
+      constr_pars <- rstan::constrain_pars(out_stan, par_adj[i,])
+      pi_red_adj[i, ] <- constr_pars$pi
+      theta_red_adj[i,,,] <- constr_pars$theta
+    }
+    
+    #=============== Output adjusted parameters ==================================
+    # Re-normalize pi and theta for each iteration
+    pi_red_adj = pi_red_adj / rowSums(pi_red_adj)  
+    theta_red_adj <- plyr::aaply(theta_red_adj, c(1, 2, 3), function(x) x / sum(x),
+                                 .drop = FALSE) 
+    
+    # Store adjusted parameters
+    pi_red_draws[[d]] <- pi_red_adj
+    theta_red_draws[[d]] <- theta_red_adj
+  } 
+  
+  # Stack together the draws
+  pi_red <- do.call("abind", c(pi_red_draws, along = 1))
+  theta_red <- do.call("abind", c(theta_red_draws, along = 1))
+  
+  # Get adjustment parameters by averaging across draws
+  # Get posterior median estimates
+  pi_med <- apply(pi_red, 2, stats::median, na.rm = TRUE)
+  pi_med <- pi_med / sum(pi_med)  # Re-normalize
+  theta_med <- apply(theta_red, c(2, 3, 4), stats::median, na.rm = TRUE)
+  theta_med <- ifelse(theta_med < tol, tol, theta_med) # prevent underflow
+  theta_med <- plyr::aaply(theta_med, c(1, 2), function(x) x / sum(x),
+                           .drop = FALSE)  # Re-normalize
+  
+  #================= Save and return output ====================================
+  # Stop runtime tracker
+  runtime <- Sys.time() - start_time
+  # Add variance adjustment runtime to overall runtime
+  sum_runtime <- runtime + res$runtime
+  res$runtime <- sum_runtime
+  
+  estimates_adjust <- list(pi_red = pi_red, theta_red = theta_red, 
+                           pi_med = pi_med, theta_med = theta_med, 
+                           c_all = res$estimates$c_all,
+                           pred_class_probs = res$estimates$pred_class_probs)
+  
+  return(estimates_adjust)
+}
+
 
 
 # Obtain posterior parameter estimates and class assignments after propagating 
@@ -693,3 +1115,4 @@ trim_w <- function(w, m='t1', c=10, max=Inf){
   # }
   w	
 }
+
