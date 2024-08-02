@@ -154,7 +154,7 @@ sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R,
 # n_B: Sample size for non-probability sample
 # n_R: Sample size for reference sample
 # scenario: Data generating scenario
-sim_samp_wolcan <- function(i, sim_pop, n_B, n_R, scenario, 
+sim_samp_wolcan <- function(i, sim_pop, scenario, 
                             save_res = TRUE, save_path, samp_seed) {
   
   # Check save_res and save_path

@@ -260,7 +260,7 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
       
       # Check model
       if (model == "wolcan") {
-        if (scenario == 2) {  # No MI procedure (2)
+        if (scenario == 5) {  # No weights adjustment procedure (2)
           estimates <- res$estimates  # From adaptive sampler
         } else {  
           estimates <- res$estimates_adjust
@@ -569,33 +569,52 @@ get_true_params_wolcan <- function(sim_pop) {
 #==================== Tables ===================================================
 create_app_tables_wolcan <- function(save_paths, scenarios, scen_names, 
                                      overall_name, format = "latex", 
-                                     digits = 3) {
+                                     digits = 3, WOLCA = TRUE, WOLCAN = TRUE) {
   num_scen <- length(scenarios)
+  # models depending on WOLCA and WOLCAN true/false
+  model <- list()
+  if (WOLCA) {
+    model <- c(model, "Unweighted")
+  }
+  if (WOLCAN) {
+    model <- c(model, "WOLCAN")
+  }
+  model <- unlist(model)
+  # multiplier for number of rows depending on models
+  mult <- length(model)
   
-  metrics_wolcaumm <- as.data.frame(matrix(NA, nrow = 2*length(scenarios), 
+  metrics_wolcan_df <- as.data.frame(matrix(NA, nrow = mult*length(scenarios), 
                                        ncol = 10))
-  colnames(metrics_wolcaumm) <- c(overall_name, "Model", "Weights Abs Bias",
+  colnames(metrics_wolcan_df) <- c(overall_name, "Model", "Weights Abs Bias",
                               "$K$ Abs Bias", "$\\pi$ Abs Bias",  
                               "$\\theta$ Abs Bias", 
                               "$\\pi$ CI Width", "$\\theta$ CI Width", 
                               "$\\pi$ Coverage","$\\theta$ Coverage")
-  metrics_wolcaumm[, 1] <- rep(scen_names, each = 2)
-  metrics_wolcaumm[, 2] <- rep(c("Unweighted", "WOLCAN"), num_scen)  
+  metrics_wolcan_df[, 1] <- rep(scen_names, each = mult)
+  metrics_wolcan_df[, 2] <- rep(model, num_scen)  
   # output_inds <- 1:7
   output_inds <- c(1, 2, 3, 5, 4, 6)
+  row_ind <- 1
   for (i in 1:num_scen) {
     save_path <- save_paths[i]
     load(paste0(save_path, "summary.RData"))
-    row_ind <- 2 * (i-1)
-    metrics_wolcaumm[row_ind + 1, -c(1,2)] <- c(metrics_all$metrics_wolca[output_inds], 
-                                            mean(metrics_all$metrics_wolca$pi_cover_avg), 
-                                            mean(metrics_all$metrics_wolca$theta_cover_avg))
-    metrics_wolcaumm[row_ind + 2, -c(1,2)] <- c(metrics_all$metrics_wolcan[output_inds], 
-                                            mean(metrics_all$metrics_wolcan$pi_cover_avg), 
-                                            mean(metrics_all$metrics_wolcan$theta_cover_avg))
+    if (WOLCA) {
+      metrics_wolcan_df[row_ind, -c(1,2)] <- 
+        c(metrics_all$metrics_wolca[output_inds], 
+          mean(metrics_all$metrics_wolca$pi_cover_avg), 
+          mean(metrics_all$metrics_wolca$theta_cover_avg))
+      row_ind <- row_ind + 1
+    }
+    if (WOLCAN) {
+      metrics_wolcan_df[row_ind, -c(1,2)] <- 
+        c(metrics_all$metrics_wolcan[output_inds], 
+          mean(metrics_all$metrics_wolcan$pi_cover_avg), 
+          mean(metrics_all$metrics_wolcan$theta_cover_avg))
+      row_ind <- row_ind + 1
+    }
   }
   
-  metrics_wolcaumm %>% 
+  metrics_wolcan_df %>% 
     kbl(digits = digits, align = "rrrrrrrrrrrr", booktabs = TRUE, format = format,
         caption = "Summary of mean absolute bias, 95% credible interval width, and coverage for simulations based on posterior samples.") %>%
     kable_classic() %>%
