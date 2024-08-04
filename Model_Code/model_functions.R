@@ -84,6 +84,10 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
                function(x) length(unique(x)))  
   R <- max(R_j)             # Maximum number of exposure categories across items
   
+  if (!is.null(adapt_seed)) {
+    set.seed(adapt_seed)
+  }
+  
   #================ Get pseudo-weights =========================================
   print("Getting pseudo-weights...")
   est_weights <- get_weights_bart(dat_B = dat_B, dat_R = dat_R, 
@@ -201,20 +205,20 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
     res$estimates <- get_estimates_wolca(MCMC_out = res$MCMC_out, 
                                      post_MCMC_out = res$post_MCMC_out, n = n, J = J,
                                      x_mat = x_mat)
+    K_red <- res$estimates$K_red
+    print(paste0("K_red: ", K_red))
     
     if (wts_adj == "WS all") {
       print("Accounting for weights uncertainty...")
       res$estimates_adjust <- suppressMessages(
-        get_var_adj(D = D, K = K, res = res, wts_post = wts_post, tol = tol,
-                    num_reps = num_reps, alpha = alpha_fixed, eta = eta_fixed, 
-                    save_res = save_res, save_path = save_path, 
-                    adjust_seed = fixed_seed))
+        get_var_adj(D = D, K = K_red, res = res, wts_post = wts_post, tol = tol,
+                    num_reps = num_reps, save_res = save_res, 
+                    save_path = save_path, adjust_seed = fixed_seed))
     } else if (wts_adj == "WS mean") {
       print("Using mean weights...")
       res$estimates_adjust <- suppressMessages(
-        get_var_adj_mean(K = K, res = res, wts = wts, tol = tol, 
-                         num_reps = num_reps, alpha = alpha_fixed, 
-                         eta = eta_fixed, save_res = save_res, 
+        get_var_adj_mean(K = K_red, res = res, wts = wts, tol = tol, 
+                         num_reps = num_reps, save_res = save_res, 
                          save_path = save_path, adjust_seed = fixed_seed))
     } else {
       print("Not accounting for weights uncertainty...")
@@ -273,8 +277,8 @@ get_var_adj_mean <- function(K, res, wts, tol, num_reps = 100,
   R <- res$data_vars$R
   n <- res$data_vars$n
   x_mat <- res$data_vars$x_mat
-  w_all <- wts
-  
+  w_all <- wts / (sum(wts) / n)
+
   #================= Initialize hyperparameters ================================
   # Default hyperparameters for pi and theta
   if (is.null(alpha)) {

@@ -80,15 +80,9 @@ if (already_done) {
   }
   
   ### Read in population and sample data
-  if (scenario %in% c(1, 2, 3, 4, 5)) {
-    load(paste0(wd, data_dir, "scen_", 1, "/sim_pop_wolcan.RData"))
-    load(paste0(wd, data_dir, "scen_", 1, "/sim_samp_", samp_i, "_B_wolcan.RData"))
-    load(paste0(wd, data_dir, "scen_", 1, "/sim_samp_", samp_i, "_R_wolcan.RData"))
-  } else {
-    load(paste0(wd, data_dir, "scen_", scenario, "/sim_pop_wolcan.RData"))
-    load(paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", samp_i, "_B_wolcan.RData"))
-    load(paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", samp_i, "_R_wolcan.RData"))
-  }
+  load(paste0(wd, data_dir, "scen_", scenario, "/sim_pop_wolcan.RData"))
+  load(paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", samp_i, "_B_wolcan.RData"))
+  load(paste0(wd, data_dir, "scen_", scenario, "/sim_samp_", samp_i, "_R_wolcan.RData"))
     
   # # Number of overlapping individuals
   # length(intersect(sim_samp_R$ind_R, sim_samp_B$ind_B))
@@ -113,14 +107,13 @@ if (already_done) {
   parallel <- TRUE   # Whether to parallelize for MI
   n_cores <- 8       # Number of cores to use for parallelization
   wts_adj <- "MI"    # Adjustment method to account for weights uncertainty
-  MI <- TRUE         # Whether to run MI procedure for variance estimation
   adjust <- TRUE     # Whether to adjust variance for pseudo-likelihood
   tol <- 1e-8        # Underflow tolerance
   num_reps <- 100    # Number of bootstrap replicates for WS adjustment
   run_adapt <- TRUE  # Whether to run adaptive sampler to get K
   K_max <- 30          # Max number of latent classes for adaptive sampler
   adapt_seed <- samp_i # Seed for adaptive sampler
-  fixed_seed <- samp_i # Seed for fixed sampler
+  fixed_seed <- 1    # Seed for fixed sampler
   n_runs <- 20000    # Number of MCMC iterations
   burn <- 10000      # Burn-in
   thin <- 5          # Thinning

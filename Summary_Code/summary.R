@@ -30,7 +30,7 @@ sum_dir <- "Summary_Results/"  # Summary results directory
 source(paste0(wd, code_dir, "summary_functions.R"))
 
 #================ Summarize and save results ===================================
-scenario <- 1
+scenario <- 10
 samp_i_seq <- 1:100
 # Define path to save results
 save_path <- paste0(wd, sum_dir, "scen_", scenario, "/")
@@ -55,14 +55,16 @@ save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE,
 
 #============== Create Tables ==================================================
 
-scenarios <- c(0, 1)
+scenarios <- c(2, 3, 4, 5)
+scenarios <- c(0, 7, 8, 10)
 # scen_names <- c("Baseline: n = 2000 (5%)")
 scen_names <- paste0("Scen ", scenarios)
-save_names <- rep("metrics_scen", 3)
+# scen_names <- c("WS all", "WS mean", "MI no var adj", "no wts adj")
+save_names <- rep("metrics_scen", length(scenarios))
 save_paths <- paste0(wd, sum_dir, "scen_", scenarios, "/")
 create_app_tables_wolcan(save_paths = save_paths, scenarios = scenarios, 
                          scen_names = scen_names, overall_name = "Scenario",
-                         format = "html")
+                         format = "html", WOLCA = TRUE, WOLCAN = TRUE)
 
 
 #================= Plot theta patterns =========================================
