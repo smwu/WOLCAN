@@ -113,7 +113,7 @@ if (already_done) {
   run_adapt <- TRUE  # Whether to run adaptive sampler to get K
   K_max <- 30          # Max number of latent classes for adaptive sampler
   adapt_seed <- samp_i # Seed for adaptive sampler
-  fixed_seed <- samp_i # Seed for fixed sampler
+  fixed_seed <- 1    # Seed for fixed sampler
   n_runs <- 20000    # Number of MCMC iterations
   burn <- 10000      # Burn-in
   thin <- 5          # Thinning

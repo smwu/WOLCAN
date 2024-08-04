@@ -64,9 +64,9 @@ sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R,
     # Offsets to obtain correct sample size
     offset_B <- root_n(x = (- 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2
                             + 0.2 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.3 * pop$A3),
-                       n = n_R)
+                       n = n_B)
     offset_R <- root_n(x = (- 0.6 * pop$A1 + 0.4 * pop$A12 + 0.7 * pop$A2
-                            + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.4 * pop$A3), n = n_B)
+                            + 0.1 * pop$logA2 - 0.05 * pop$sinA1A2 + 0.4 * pop$A3), n = n_R)
     # Selection probabilities for non-probability sample
     pop$pi_B <- exp(offset_B - 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2
                     + 0.2 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.3 * pop$A3) /
@@ -80,20 +80,21 @@ sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R,
     ## Low-overlap setting
   } else {
     # Offsets to obtain correct sample size
-    offset_B <- root_n(x = (- 1.2 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
-                            + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2), n = n_R)
-    offset_R <- root_n(x = (0.9 * pop$A1 + 1.8 * pop$A2 - 0.05 * pop$logA2 
-                            - 0.1 * pop$A1A2), n = n_B)
+    offset_B <- root_n(x = (- 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2
+                            + 0.2 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.3 * pop$A3),
+                       n = n_B)
+    offset_R <- root_n(x = (0.7 * pop$A1 - 0.6 * pop$A2 + 0.1 * pop$logA2 
+                            + 0.1 * pop$A1A2 - 0.1 * pop$A3), n = n_R)
     # Selection probabilities for non-probability sample
-    pop$pi_B <- exp(offset_B - 1.2 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
-                    + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2) /
-      (1 + exp(offset_B - 1.2 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2 
-               + 0.3 * pop$logA2 - 0.1 * pop$sinA1A2))
+    pop$pi_B <- exp(offset_B - 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2
+                    + 0.2 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.3 * pop$A3) /
+      (1 + exp(offset_B - 0.9 * pop$A1 + 0.2 * pop$A12 + 0.8 * pop$A2
+               + 0.2 * pop$logA2 - 0.1 * pop$sinA1A2 + 0.3 * pop$A3))
     # Selection probabilities for reference sample
-    pop$pi_R <- exp(offset_R + 0.9 * pop$A1 + 1.8 * pop$A2 - 0.05 * pop$logA2 
-                    - 0.1 * pop$A1A2) /
-      (1 + exp(offset_R + 0.9 * pop$A1 + 1.8 * pop$A2 - 0.05 * pop$logA2
-               - 0.1 * pop$A1A2))
+    pop$pi_R <- exp(offset_R + 0.7 * pop$A1 - 0.6 * pop$A2 + 0.1 * pop$logA2 
+                    + 0.1 * pop$A1A2 - 0.1 * pop$A3) /
+      (1 + exp(offset_R + 0.7 * pop$A1 - 0.6 * pop$A2 + 0.1 * pop$logA2 
+               + 0.1 * pop$A1A2 - 0.1 * pop$A3))
   }
   
   ### Generate categorical latent class assignment C

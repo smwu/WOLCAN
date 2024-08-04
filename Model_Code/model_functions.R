@@ -184,7 +184,6 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
     if (!is.null(fixed_seed)) {
       set.seed(fixed_seed)
     }
-    set.seed(18)
     
     # Initialize OLCA model using fixed number of classes. Obtain pi, theta, c_all
     OLCA_params <- init_OLCA(alpha = alpha_fixed, eta = eta_fixed, n = n,
