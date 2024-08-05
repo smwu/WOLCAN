@@ -548,3 +548,46 @@ plot_overlap <- function(wd, data_dir, scenario, samp_i) {
 
 plot_overlap(wd = wd, data_dir = data_dir, scenario = 0, samp_i = 1)
 plot_overlap(wd = wd, data_dir = data_dir, scenario = 10, samp_i = 1)
+
+# Obtain number of overlapping individuals
+get_n_overlap <- function(wd, data_dir, scenario, num_samps) {
+  num_overlap <- numeric(num_samps)
+  prop_overlap <- numeric(num_samps)
+  for (i in 1:num_samps) {
+    samp_i <- i
+    # Load convenience sample
+    load(paste0(wd, data_dir,  "scen_", scenario, "/", "sim_samp_", samp_i, 
+                "_B_wolcan.RData"))
+    # Load reference sample
+    load(paste0(wd, data_dir,  "scen_", scenario, "/", "sim_samp_", samp_i, 
+                "_R_wolcan.RData"))
+    ind_overlap <- intersect(sim_samp_B$ind_B, sim_samp_R$ind_R)
+    num_overlap[i] <- length(ind_overlap)
+    prop_overlap[i] <- length(ind_overlap) / 
+      length(unique(c(sim_samp_B$ind_B, sim_samp_R$ind_R)))
+  }
+  res_overlap <- list(num_overlap = num_overlap, prop_overlap = prop_overlap)
+  return(res_overlap)
+}
+
+scen_0 <- get_n_overlap(wd = wd, data_dir = data_dir, scenario = 0, 
+                        num_samps = 100)
+scen_10 <- get_n_overlap(wd = wd, data_dir = data_dir, scenario = 10, 
+                         num_samps = 100)
+scen <- scen_10
+mean(scen$num_overlap)
+summary(scen$num_overlap)
+mean(scen$prop_overlap)
+summary(scen$prop_overlap)
+
+# Plot overlap
+df_overlap <- data.frame(High = 100 * scen_0$prop_overlap, 
+                         Low = 100 * scen_10$prop_overlap)
+df_long <- df_overlap %>%
+  pivot_longer(cols = everything(), names_to = "Scenario", values_to = "Percent")
+df_long %>%
+  ggplot(aes(x = Scenario, y = Percent, fill = Scenario)) + 
+  geom_violin() + theme_bw() + ylab("Percent Overlap") + 
+  theme(legend.position = "none") + ylim(0, 8)
+
+
