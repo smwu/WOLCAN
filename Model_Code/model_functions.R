@@ -960,10 +960,12 @@ wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn,
 #   hat_pi_R: Vector of mean estimated reference sample selection probabilities. Nx1.
 #   hat_pi_R_dist: Matrix of estimated reference sample selection probabilities 
 # from the BART posterior draws. Each column corresonds to a single draw. Nx(num_post).
+#   pred_model: String specifying type of prediction model to use to create the 
+# pseudo-weights. Must be one of `"bart"` (default) or `"glm"`.
 get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R, 
                              num_post = 1000, pi_R, hat_pi_R = NULL, 
                              frame_B = 1, frame_R = 1, trim_method = "t2", 
-                             trim_c = 20) {
+                             trim_c = 20, pred_model = c("bart", "glm")) {
   # Initialize output
   est_weights <- list()
   
@@ -986,13 +988,6 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
     # Then convert to pi_B using CRISP
     hat_pi_B <- hat_pi_z[z == 1] * hat_pi_R * frame_R / 
       (frame_B * (1 - hat_pi_z[z == 1]))
-  
-    # # Logistic regression instead of BART
-    # temp <- glm(z ~ samp_comb$A1 + samp_comb$A2, family = binomial())
-    # temp_pi_z <- temp$fitted.values
-    # temp_pi_B <- temp_pi_z[z == 1] * hat_pi_R * frame_R / 
-    #   (frame_B * (1 - temp_pi_z[z == 1]))
-    # mean(abs(temp_pi_B - sim_samp_B$true_pi_B))
     
     # Get distribution of hat_pi_B
     hat_pi_z_dist <- fit_pi_B$prob.train
@@ -1008,40 +1003,83 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
     
   # If pi_R not known for all, predict pi_R for those in S_B 
   } else {
-    # Predict logit(pi_R) for i in S_B
-    # Change so that it only predicts for those in S_B rather than all
-    fit_pi_R <- wbart(x.train = samp_comb[z == 0, pred_covs_R, drop = FALSE],
-                      y.train = logit_pi_R,
-                      x.test = samp_comb[z == 1, pred_covs_R, drop = FALSE],
-                      ntree = 50L, nskip = 100L, ndpost = num_post)
-    hat_logit_pi_R <- fit_pi_R$yhat.test.mean
-    # Convert to pi_R scale using expit
-    hat_pi_R <- exp(hat_logit_pi_R) / (1 + exp(hat_logit_pi_R))
-    # Get distribution of hat_pi_R
-    hat_logit_pi_R_dist <- fit_pi_R$yhat.test
-    hat_pi_R_dist <- exp(hat_logit_pi_R_dist) / (1 + exp(hat_logit_pi_R_dist))
     
-    # Predict pi_B for i in S_B
-    fit_pi_B <- pbart(x.train = samp_comb[, pred_covs_B, drop = FALSE],
-                      y.train = z, ntree = 50L, nskip = 100L, ndpost = num_post)
-    hat_pi_z <- fit_pi_B$prob.train.mean
-    hat_pi_B <- hat_pi_z[z == 1] * hat_pi_R * frame_R / 
-      (frame_B * (1 - hat_pi_z[z == 1]))
-    
-    # Get distribution of hat_pi_B, incorporating distribution of hat_pi_R
-    hat_pi_z_dist <- fit_pi_B$prob.train
-    hat_pi_B_dist <- matrix(NA, nrow = num_post, ncol = n1)
-    # hat_pi_B_dist <- vector(mode = "list", length = num_post)
-    for (m in 1:num_post) {
-      pi_z_m <- hat_pi_z_dist[m, ]
-      pi_B_m <- pi_z_m[z == 1] * hat_pi_R_dist[m, ] * frame_R / 
-        (frame_B * (1 - pi_z_m[z == 1]))
-      # Restrict to [0, 1]
-      hat_pi_B_dist[m, ] <- sapply(1:n1, function(x) max(min(pi_B_m[x], 1), 0))
+    if (pred_model == "bart") {
+      
+      # Predict logit(pi_R) for i in S_B
+      # Changed so that it only predicts for those in S_B rather than all
+      fit_pi_R <- wbart(x.train = samp_comb[z == 0, pred_covs_R, drop = FALSE],
+                        y.train = logit_pi_R,
+                        x.test = samp_comb[z == 1, pred_covs_R, drop = FALSE],
+                        ntree = 50L, nskip = 100L, ndpost = num_post)
+      hat_logit_pi_R <- fit_pi_R$yhat.test.mean
+      # Convert to pi_R scale using expit
+      hat_pi_R <- exp(hat_logit_pi_R) / (1 + exp(hat_logit_pi_R))
+      # Get distribution of hat_pi_R
+      hat_logit_pi_R_dist <- fit_pi_R$yhat.test
+      hat_pi_R_dist <- exp(hat_logit_pi_R_dist) / (1 + exp(hat_logit_pi_R_dist))
+        
+            # # Binary bart model for predicting pi_R for i in S_B
+            # fit_pi_R <- pbart(x.train = samp_comb[z == 0, pred_covs_R, drop = FALSE],
+            #                   y.train = pi_R, 
+            #                   x.test = samp_comb[z == 1, pred_covs_R, drop = FALSE],
+            #                   ntree = 50L, nskip = 100L, ndpost = num_post)
+            # hat_pi_R <- colMeans(fit_pi_R$yhat.test)
+            # # Get distribution of hat_pi_R
+            # hat_pi_R_dist <-  fit_pi_R$yhat.test
+      
+      # Predict pi_B for i in S_B
+      fit_pi_B <- pbart(x.train = samp_comb[, pred_covs_B, drop = FALSE],
+                        y.train = z, ntree = 50L, nskip = 100L, ndpost = num_post)
+      hat_pi_z <- fit_pi_B$prob.train.mean
+      hat_pi_B <- hat_pi_z[z == 1] * hat_pi_R * frame_R / 
+        (frame_B * (1 - hat_pi_z[z == 1]))
+      
+      # Get distribution of hat_pi_B, incorporating distribution of hat_pi_R
+      hat_pi_z_dist <- fit_pi_B$prob.train
+      hat_pi_B_dist <- matrix(NA, nrow = num_post, ncol = n1)
+      # hat_pi_B_dist <- vector(mode = "list", length = num_post)
+      for (m in 1:num_post) {
+        pi_z_m <- hat_pi_z_dist[m, ]
+        pi_B_m <- pi_z_m[z == 1] * hat_pi_R_dist[m, ] * frame_R / 
+          (frame_B * (1 - pi_z_m[z == 1]))
+        # Restrict to [0, 1]
+        hat_pi_B_dist[m, ] <- sapply(1:n1, function(x) max(min(pi_B_m[x], 1), 0))
+      }
+      
+      # Add estimated hat_pi_R distribution to output list
+      est_weights$hat_pi_R_dist <- hat_pi_R_dist
+      
+    } else if (pred_model == "glm") {
+      
+      ### Predict logit(pi_R) for i in S_B using regression
+      # Add logit(pi_R) to data for those in S_R
+      glm_data <- cbind(samp_comb[z==0, , drop = FALSE], logit_pi_R)
+      form_R <- as.formula(paste0("logit_pi_R ~ ", 
+                                   paste0(pred_covs_B, collapse = " + ")))
+      fit_pi_R <- lm(form_R, data = glm_data)
+            # fit_pi_R <- lm(form_R, data = samp_comb[z == 0, pred_covs_R, drop = FALSE])
+      hat_logit_pi_R <- predict(fit_pi_R, newdata = samp_comb[z == 1, pred_covs_R, 
+                                                              drop = FALSE])
+      # Convert to pi_R scale using expit
+      hat_pi_R <- exp(hat_logit_pi_R) / (1 + exp(hat_logit_pi_R))
+      # Distribution of hat_pi_R set to mean
+      hat_pi_R_dist <- hat_pi_R
+      
+      # Predict pi_B for i in S_B using logistic regression instead of BART
+      # Add z to data
+      glm_data2 <- cbind(samp_comb, z)
+      form_B <- as.formula(paste0("z ~ ", 
+                                  paste0(pred_covs_B, collapse = " + ")))
+      fit_pi_B <- glm(form_B, data = glm_data2, family = binomial())
+      hat_pi_z <- fit_pi_B$fitted.values
+      hat_pi_B <- hat_pi_z[z == 1] * hat_pi_R * frame_R / 
+        (frame_B * (1 - hat_pi_z[z == 1]))
+      # Distribution of hat_pi_B set to mean
+      hat_pi_B_dist <- hat_pi_B
+    } else {
+      stop("pred_model must be one of `'bart'` or `'glm'`")
     }
-    
-    # Add estimated hat_pi_R distribution to output list
-    est_weights$hat_pi_R_dist <- hat_pi_R_dist
   }
   
   # Form pseudo-weights
