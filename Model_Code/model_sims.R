@@ -92,6 +92,7 @@ if (already_done) {
   x_mat <- sim_samp_B$X_data  # Multivariate categorical variables
   dat_B <- data.frame(sim_samp_B$covs)  # Covariates for NPS
   dat_R <- data.frame(sim_samp_R$covs)  # Covariates for reference
+  pred_model <- "bart"  # Prediction model for selection
   pred_covs_B <- c("A1", "A2", "A1A2", "A3")  # Covariates to predict NPS selection
   pred_covs_R <- c("A1", "A2", "A1A2", "A3")  # Covariates to predict RS selection
   pi_R <- sim_samp_R$pi_R  # RS selection probabilites for those in RS
@@ -127,20 +128,25 @@ if (already_done) {
   
   ### Modifications based on scenario
   if (scenario == 2) {  # WS one-step adjustment with draws
-    wts_adj = "WS all"
+    wts_adj <- "WS all"
   } else if (scenario == 3) {  # WS one-step adjustment with draws
-    wts_adj = "WS mean"
+    wts_adj <- "WS mean"
   } else if (scenario == 4) {  # No pseudo-likelihood adjustment
-    adjust = FALSE
+    adjust <- FALSE
   } else if (scenario == 5) {  # No propagation of weights uncertainty
-    wts_adj = "none"
+    wts_adj <- "none"
+  } else if (scenario == 6) {  # D = 10
+    D <- 10
   } else if (scenario == 14) {  # RS weights known for NPS
-    hat_pi_R = sim_samp_B$true_pi_R
-  } 
+    hat_pi_R <- sim_samp_B$true_pi_R
+  } else if (scenario == 15) {  # A3 not included in prediction covariates
+    pred_covs_B <- c("A1", "A2")
+  }
   
   ### Run weighted model
   res <- wolcan(x_mat = x_mat, dat_B = dat_B, dat_R = dat_R, 
-                pred_covs_B = pred_covs_B, pred_covs_R = pred_covs_R, 
+                pred_model = pred_model, pred_covs_B = pred_covs_B, 
+                pred_covs_R = pred_covs_R, 
                 pi_R = pi_R, hat_pi_R = hat_pi_R, num_post = num_post, 
                 frame_B = frame_B, frame_R = frame_R, trim_method = trim_method, 
                 trim_c = trim_c, D = D, parallel = parallel, n_cores = n_cores,

@@ -221,3 +221,47 @@ sim_samp_wolcan <- function(i, sim_pop, scenario,
   sim_samps <- list(sim_samp_B = sim_samp_B, sim_samp_R = sim_samp_R)
   return(sim_samps)
 }
+
+
+# Plot overlap
+plot_overlap <- function(wd, data_dir, scenario, samp_i) {
+  # Load convenience sample
+  load(paste0(wd, data_dir,  "scen_", scenario, "/", "sim_samp_", samp_i, 
+              "_B_wolcan.RData"))
+  # Load reference sample
+  load(paste0(wd, data_dir,  "scen_", scenario, "/", "sim_samp_", samp_i, 
+              "_R_wolcan.RData"))
+  # Load population
+  load(paste0(wd, data_dir,  "scen_", scenario, "/", "sim_pop_wolcan.RData"))
+  n_B <- nrow(sim_samp_B$covs)
+  n_R <- nrow(sim_samp_R$covs)
+  
+  # Get inclusion probabilities
+  comb_ind <- c(sim_samp_B$ind_B, sim_samp_R$ind_R)
+  comb_pi_B <- sim_pop$pi_B[comb_ind]
+  comb_pi_R <- sim_pop$pi_R[comb_ind]
+  
+  # Create df
+  df <- data.frame(comb_ind, comb_pi_B, comb_pi_R)
+  # Sort by increasion pi_B
+  df <- df %>%
+    arrange(comb_pi_B, comb_pi_R)
+  # high_df$sample <- c(rep("Convenience", n_B),
+  #                     rep("Reference", n_R))
+  df$new_ind <- 1:length(comb_ind)
+  df_long <- df %>%
+    pivot_longer(
+      cols = comb_pi_B:comb_pi_R,
+      names_to = "Sample",
+      values_to = "Incl_Prob"
+    ) 
+  df_long %>%
+    ggplot(aes(x = new_ind, y = Incl_Prob, col = Sample)) + 
+    geom_line() + theme_bw() + 
+    facet_grid(~Sample) + 
+    theme(strip.text = element_blank()) + 
+    theme(legend.position = "right") +
+    scale_color_manual(values = c("#66c2a5", "#fc8d62"), name = "", 
+                       labels = expression(pi[B], pi[R])) + 
+    xlab("Unit") + ylab("Inclusion Probability")
+}

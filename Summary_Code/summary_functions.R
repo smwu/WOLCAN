@@ -58,6 +58,7 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   
   # Initialize variables
   L <- length(samp_i_seq)  # Number of samples
+  J <- dim(sim_pop$true_global_thetas)[1]        # Number of exposure items
   runtime_all <- numeric(L)
   # Bias squared using posterior median
   K_all <- K_dist <- pi_dist <- theta_dist <- wts_dist <- rep(NA, L) 
@@ -142,7 +143,8 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
                                      wd = wd, data_dir = data_dir, 
                                      res_dir = res_dir, scenario = scenario, 
                                      model = model, dist_type = dist_type, 
-                                     subset = subset, save_path = save_path)
+                                     subset = subset, save_path = save_path, 
+                                     true_params = true_params)
       
       if (!is.null(summ_l)) {
         runtime_all[l] <- summ_l$runtime
@@ -221,7 +223,8 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
 # Inputs:
 #   samp_i: sample iteration index
 get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir, 
-                                 scenario, model, dist_type, subset, save_path) {
+                                 scenario, model, dist_type, subset, save_path,
+                                 true_params) {
   
   # Initialize return
   summ_i <- NULL
@@ -234,8 +237,8 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
     
   } else {
     # Obtain true observed population parameters
-    # Need to reload so that filler dimensions do not keep adding over iterations
-    true_params <- get_true_params_wolcan(sim_pop = sim_pop)
+          # # Need to reload so that filler dimensions do not keep adding over iterations
+          # true_params <- get_true_params_wolcan(sim_pop = sim_pop)
     true_K <- as.vector(sim_pop$K)
     
     # Check that sample data file exists
