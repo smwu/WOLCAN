@@ -4,6 +4,8 @@
 ## Last Updated: 2023/05/20
 #==================================
 
+rm(list = ls())
+
 library(baysc)
 library(abind)  # binding arrays
 library(flextable)
@@ -30,7 +32,7 @@ sum_dir <- "Summary_Results/"  # Summary results directory
 source(paste0(wd, code_dir, "summary_functions.R"))
 
 #================ Summarize and save results ===================================
-scenario <- 10
+scenario <- 9
 samp_i_seq <- 1:100
 # Define path to save results
 save_path <- paste0(wd, sum_dir, "scen_", scenario, "/")
@@ -56,7 +58,8 @@ save_scen_metrics(scenario = scenario, samp_i_seq = samp_i_seq, WOLCAN = TRUE,
 #============== Create Tables ==================================================
 
 scenarios <- c(2, 3, 4, 5)
-scenarios <- c(0, 7, 8, 10)
+scenarios <- c(0, 7, 8, 10, 9)
+scenarios <- c(6, 15)
 # scen_names <- c("Baseline: n = 2000 (5%)")
 scen_names <- paste0("Scen ", scenarios)
 # scen_names <- c("WS all", "WS mean", "MI no var adj", "no wts adj")

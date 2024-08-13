@@ -46,10 +46,13 @@
 # for variance estimation that incorporates variability in the pseudo-weights. 
 # Default is `TRUE`.
 #   num_reps: Number of bootstrap replicates for the WS variance adjustment
+#   pred_model: String specifying type of prediction model to use to create the 
+# pseudo-weights. Must be one of `"bart"` (default) or `"glm"`.
 # Outputs:
 # 
-wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R, 
-                   hat_pi_R = NULL, num_post = 1000, frame_B = 1, frame_R = 1,
+wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"), 
+                   pred_covs_B, pred_covs_R, pi_R, hat_pi_R = NULL, 
+                   num_post = 1000, frame_B = 1, frame_R = 1, 
                    trim_method = "t2", trim_c = 20, 
                    D = 10, parallel = TRUE, n_cores = 4, 
                    wts_adj = c("MI", "WS all", "WS mean", "none"), 
@@ -91,6 +94,7 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_covs_B, pred_covs_R, pi_R,
   #================ Get pseudo-weights =========================================
   print("Getting pseudo-weights...")
   est_weights <- get_weights_bart(dat_B = dat_B, dat_R = dat_R, 
+                                  pred_model = pred_model,
                                   pred_covs_B = pred_covs_B, 
                                   pred_covs_R = pred_covs_R, 
                                   num_post = num_post, pi_R = pi_R, 

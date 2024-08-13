@@ -113,6 +113,10 @@ for (i in 1:length(data_scen)) {  # Data-generating scenario
     # Increment counter and print progress
     counter <- counter + 1
     print(paste0("Scenario ", scenario, " model ", model, " done!"))
+    
+    temp <- weights_res[counter, ]
+    save(temp, file = paste0(wd, sum_dir, "scen_", scenario, "model_", model, 
+                             ".RData"))
   }
 }
 
@@ -132,7 +136,7 @@ weights_res_mean <- weights_res_mean %>%
 
 
 # Sample size 5%: scenario 0 and 10
-tb_1 <- weights_res_mean %>% 
+tb_1 <- as.data.frame(weights_res_mean) %>% 
   filter(scenario %in% c(0, 10)) %>%
   select(-scenario)
 rownames(tb_1) <- c("High Overlap", "Low Overlap")
@@ -141,7 +145,7 @@ tb_1 %>%
   kable_classic(full_width = F)
 
 # Sample size 1%: scenario 8 and 19
-tb_2 <- weights_res_mean %>% 
+tb_2 <- as.data.frame(weights_res_mean) %>% 
   filter(scenario %in% c(8, 19)) %>%
   select(-scenario)
 rownames(tb_2) <- c("High Overlap", "Low Overlap")
@@ -150,7 +154,7 @@ tb_2 %>%
   kable_classic(full_width = F)
 
 # Sample size n_R 5% n_B 1%: scenario 13 and 20
-tb_3 <- weights_res_mean %>% 
+tb_3 <- as.data.frame(weights_res_mean) %>% 
   filter(scenario %in% c(13, 20)) %>%
   select(-scenario)
 rownames(tb_3) <- c("High Overlap", "Low Overlap")
@@ -159,7 +163,7 @@ tb_3 %>%
   kable_classic(full_width = F)
 
 # Sample size n_R 1% n_B 5%: scenario 14 and 21
-tb_4 <- weights_res_mean %>% 
+tb_4 <- as.data.frame(weights_res_mean) %>% 
   filter(scenario %in% c(14, 21)) %>%
   select(-scenario)
 rownames(tb_4) <- c("High Overlap", "Low Overlap")
