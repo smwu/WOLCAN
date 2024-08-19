@@ -137,7 +137,7 @@ if (already_done) {
     wts_adj <- "none"
   } else if (scenario == 6) {  # D = 10
     D <- 10
-  } else if (scenario == 14) {  # RS weights known for NPS
+  } else if (scenario == 14) {  # PS weights known for NPS
     hat_pi_R <- sim_samp_B$true_pi_R
   } else if (scenario == 15) {  # A3 not included in prediction covariates
     pred_covs_B <- c("A1", "A2")
@@ -158,7 +158,7 @@ if (already_done) {
                 save_res = TRUE, save_path = save_path)
   
   ### Run unweighted model
-  if (scenario %in% c(0, 1, 7:11)) {
+  if (scenario %in% c(0, 1, 7:11, 18:19)) {
     res_unwt <- wolca(x_mat = x_mat, sampling_wt = rep(1, nrow(x_mat)), 
                              run_sampler = "both", K_max = K_max, 
                              adapt_seed = adapt_seed, class_cutoff = 0.05, 

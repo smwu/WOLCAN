@@ -46,6 +46,7 @@ num_samps <- 100 # Number of samples
 
 # Initialize results data frame
 weights_res <- as.data.frame(matrix(NA, nrow = num_scen, ncol = num_samps))
+pi_res <- as.data.frame(matrix(NA, nrow = num_scen, ncol = num_samps))
 
 # Counter to keep track of total scenarios
 counter <- 1
@@ -92,6 +93,7 @@ for (i in 1:length(data_scen)) {  # Data-generating scenario
       if (model == "none") {  # no weights
         wts <- rep(1, nrow(x_mat))
         res <- mean(abs(wts - 1/(sim_samp_B$true_pi_B)))
+        pi <- mean(abs(1/wts - sim_samp_B$true_pi_B))
         
       } else {
         invisible(capture.output(
@@ -106,24 +108,35 @@ for (i in 1:length(data_scen)) {  # Data-generating scenario
         
         # Mean absolute difference of weights
         res <- mean(abs(est_weights$wts - (1/sim_samp_B$true_pi_B)))
+        # Mean absolute different of inclusion probabilities
+        pi <- mean(abs(est_weights$hat_pi_B - sim_samp_B$true_pi_B))
       }
       
       weights_res[counter, k] <- res
+      pi_res[counter, k] <- pi
     }
     # Increment counter and print progress
     counter <- counter + 1
     print(paste0("Scenario ", scenario, " model ", model, " done!"))
     
     temp <- weights_res[counter, ]
-    save(temp, file = paste0(wd, sum_dir, "scen_", scenario, "model_", model, 
+    save(temp, file = paste0(wd, sum_dir, "scen_", scenario, "/model_", model, 
                              ".RData"))
+    temp2 <- pi_res[counter, ]
+    save(temp2, file = paste0(wd, sum_dir, "scen_", scenario, "/model_", model, 
+                              "_pi.RData"))
   }
 }
 
 rownames(weights_res) <- paste0(rep(data_scen, each = length(model_scen)), "_", 
                                 rep(model_scen, times = length(data_scen)))
+rownames(pi_res) <- paste0(rep(data_scen, each = length(model_scen)), "_", 
+                                rep(model_scen, times = length(data_scen)))
 
 save(weights_res, file = paste0(wd, sum_dir, "weights_res.RData"))
+save(pi_res, file = paste0(wd, sum_dir, "pi_res.RData"))
+
+#load(paste0(wd, sum_dir, "weights_res.RData"))
 
 # Reshape data for tables
 weights_res_mean <- data.frame(mean_abs_bias = rowMeans(weights_res))
@@ -132,6 +145,14 @@ weights_res_mean$model <- rep(model_scen, times = length(data_scen))
 weights_res_mean <- weights_res_mean %>% 
   pivot_wider(names_from = model, values_from = mean_abs_bias)
 weights_res_mean <- weights_res_mean %>%
+  mutate(scenario = unlist(scenario))
+
+pi_res_mean <- data.frame(mean_abs_bias = rowMeans(pi_res))
+pi_res_mean$scenario <- rep(data_scen, each = length(model_scen))
+pi_res_mean$model <- rep(model_scen, times = length(data_scen))
+pi_res_mean <- pi_res_mean %>% 
+  pivot_wider(names_from = model, values_from = mean_abs_bias)
+pi_res_mean <- pi_res_mean %>%
   mutate(scenario = unlist(scenario))
 
 
@@ -170,6 +191,83 @@ rownames(tb_4) <- c("High Overlap", "Low Overlap")
 tb_4 %>%
   kbl(caption = "n_R 1%, n_B 5%", digits = 3) %>%
   kable_classic(full_width = F)
+
+
+# For pi
+# Sample size 5%: scenario 0 and 10
+tb_1 <- as.data.frame(pi_res_mean) %>% 
+  filter(scenario %in% c(0, 10)) %>%
+  select(-scenario)
+rownames(tb_1) <- c("High Overlap", "Low Overlap")
+tb_1 %>%
+  kbl(caption = "5% Sample Size", digits = 3) %>%
+  kable_classic(full_width = F)
+
+# Sample size 1%: scenario 8 and 19
+tb_2 <- as.data.frame(pi_res_mean) %>% 
+  filter(scenario %in% c(8, 19)) %>%
+  select(-scenario)
+rownames(tb_2) <- c("High Overlap", "Low Overlap")
+tb_2 %>%
+  kbl(caption = "1% Sample Size", digits = 3) %>%
+  kable_classic(full_width = F)
+
+# Sample size n_R 5% n_B 1%: scenario 13 and 20
+tb_3 <- as.data.frame(pi_res_mean) %>% 
+  filter(scenario %in% c(13, 20)) %>%
+  select(-scenario)
+rownames(tb_3) <- c("High Overlap", "Low Overlap")
+tb_3 %>%
+  kbl(caption = "n_R 5%, n_B 1%", digits = 3) %>%
+  kable_classic(full_width = F)
+
+# Sample size n_R 1% n_B 5%: scenario 14 and 21
+tb_4 <- as.data.frame(pi_res_mean) %>% 
+  filter(scenario %in% c(14, 21)) %>%
+  select(-scenario)
+rownames(tb_4) <- c("High Overlap", "Low Overlap")
+tb_4 %>%
+  kbl(caption = "n_R 1%, n_B 5%", digits = 3) %>%
+  kable_classic(full_width = F)
+
+# Rearrange and print full weights df
+displ <- weights_res_mean %>%
+  slice(match(c(0, 10, 14, 21, 13, 20, 8, 19), scenario)) %>%
+  mutate(Overlap = rep(c("High", "Low"), times = 4)) %>%
+  select(Overlap, none, logistic, logistic_cov, bart_500:bart_2000, bart_1000_cov)
+displ <- as.data.frame(displ)
+colnames(displ) <- c("Overlap", "No Model", "LogReg", "LogRegMiss", "BART500", 
+                     "BART1000", "BART2000", "BART1000Miss")
+displ$`Sample Size` <- rep(c("$n_B 5\\%, n_R 5\\%$", "$n_B 5\\%, n_R 1\\%$", 
+                      "$n_B 1\\%, n_R 5\\%$", "$n_B 1\\%, n_R 1\\%$"), each = 2)
+displ <- displ %>% select(`Sample Size`, Overlap:`BART1000Miss`)
+displ %>%
+  kbl(digits = 3, format = "html", booktabs = TRUE) %>%
+  kable_classic(full_width = FALSE)
+
+# Plot comparison for high and low overlap
+plot_df <- displ 
+plot_df %>%
+  pivot_longer(cols = `No Model`:BART1000Miss, names_to = "Model", 
+               values_to = "mean_abs_bias") %>%
+  ggplot(aes(x = `Sample Size`, y = mean_abs_bias, fill = fct_rev(Model))) + 
+  theme_bw() + geom_bar(stat = "identity", position = position_dodge()) + 
+  facet_grid(.~Overlap, labeller = as_labeller(c("High" = "High Overlap",
+                                                 "Low" = "Low Overlap"))) + 
+  scale_fill_brewer(palette = "Set2") + 
+  ylab("Mean Absolute Bias for Pseudo-Weights") + 
+  labs(fill = "Model") + 
+  theme(legend.position = "right",
+        strip.background = element_rect(fill="aliceblue")) +
+  scale_x_discrete(name = "Sample Size",
+                   limits = c("$n_B 5\\%, n_R 5\\%$", 
+                              "$n_B 5\\%, n_R 1\\%$",
+                              "$n_B 1\\%, n_R 5\\%$",
+                              "$n_B 1\\%, n_R 1\\%$"),
+                   labels = c(expression(n[B]*" 5%, "*n[R]*" 5%"),
+                              expression(n[B]*" 5%, "*n[R]*" 1%"),
+                              expression(n[B]*" 1%, "*n[R]*" 5%"),
+                              expression(n[B]*" 1%, "*n[R]*" 1%")))
 
 
 # Plot comparison of BART number of posterior samples
