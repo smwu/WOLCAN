@@ -61,12 +61,12 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   J <- dim(sim_pop$true_global_thetas)[1]        # Number of exposure items
   runtime_all <- numeric(L)
   # Bias squared using posterior median
-  K_all <- K_dist <- pi_dist <- theta_dist <- wts_dist <- rep(NA, L) 
+  K_all <- K_dist <- pi_dist <- theta_dist <- theta_mode_dist <- wts_dist <- rep(NA, L) 
   # Posterior variance
   pi_var_all <- theta_var_all <- rep(NA, L) 
   # Coverage variables
-  pi_cover <- matrix(0, nrow=L, ncol=length(true_params$true_pi))
-  theta_cover <- array(0, c(L, dim(true_params$true_theta)[c(1,2)]))
+  pi_cover_all <- matrix(0, nrow=L, ncol=length(true_params$true_pi))
+  theta_cover_all <- array(0, c(L, dim(true_params$true_theta)[c(1,2)]))
   # MSE for all iterations
   pi_mse_all <- theta_mse_all <- rep(NA, L)
   
@@ -108,18 +108,20 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
         K_all[l] <- summ_l$K
         K_dist[l] <- summ_l$K_dist
         theta_dist[l] <- summ_l$theta_dist
+        theta_mode_dist[l] <- summ_l$theta_mode_dist  # for modal probs
         pi_dist[l] <- summ_l$pi_dist
-        pi_cover[l, ] <- summ_l$pi_cover
+        pi_cover_all[l, ] <- summ_l$pi_cover
         pi_var_all[l] <- summ_l$pi_var
         pi_mse_all[l] <- summ_l$pi_mse
-        theta_cover[l, , 1:(dim(summ_l$theta_cover)[2])] <- summ_l$theta_cover
+        theta_cover_all[l, , 1:(dim(summ_l$theta_cover)[2])] <- summ_l$theta_cover
         theta_var_all[l] <- summ_l$theta_var
         theta_mse_all[l] <- summ_l$theta_mse
         mode_mis_all[l] <- summ_l$mode_mis
         
         # Handle extra estimated classes if necessary
         K_l <- length(summ_l$pi)
-        if (true_K < K_l) { 
+        K_storage <- dim(pi_all)[2]
+        if (K_storage < K_l) { 
           # Expand estimated matrix and array sizes
           extra <- K_l - true_K
           # Expand pi_all
@@ -152,18 +154,20 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
         K_all[l] <- summ_l$K
         K_dist[l] <- summ_l$K_dist
         theta_dist[l] <- summ_l$theta_dist
+        theta_mode_dist[l] <- summ_l$theta_mode_dist  # for modal probs
         pi_dist[l] <- summ_l$pi_dist
-        pi_cover[l, ] <- summ_l$pi_cover
+        pi_cover_all[l, ] <- summ_l$pi_cover
         pi_var_all[l] <- summ_l$pi_var
         pi_mse_all[l] <- summ_l$pi_mse
-        theta_cover[l, , 1:(dim(summ_l$theta_cover)[2])] <- summ_l$theta_cover
+        theta_cover_all[l, , 1:(dim(summ_l$theta_cover)[2])] <- summ_l$theta_cover
         theta_var_all[l] <- summ_l$theta_var
         theta_mse_all[l] <- summ_l$theta_mse
         mode_mis_all[l] <- summ_l$mode_mis
         
         # Handle extra estimated classes if necessary
         K_l <- length(summ_l$pi)
-        if (true_K < K_l) { 
+        K_storage <- dim(pi_all)[2]
+        if (K_storage < K_l) { 
           # Expand estimated matrix and array sizes
           extra <- K_l - true_K
           # Expand pi_all
@@ -186,6 +190,7 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   K_bias <- mean(K_dist, na.rm = TRUE)
   pi_bias <- mean(pi_dist, na.rm = TRUE)
   theta_bias <- mean(theta_dist, na.rm = TRUE)
+  theta_mode_bias <- mean(theta_mode_dist, na.rm = TRUE) # for modal probs
   
   # Calculated CI width, averaged across iterations
   pi_var <- mean(pi_var_all, na.rm = TRUE)
@@ -193,18 +198,24 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   
   # Calculate class-specific coverage, averaged across iterations
   # Coverage for pi
-  pi_cover_avg <- colMeans(pi_cover, na.rm = TRUE)
+  pi_cover_avg <- colMeans(pi_cover_all, na.rm = TRUE)
   # Coverage for theta: average over food items
-  theta_cover_avg <- colMeans(colMeans(theta_cover, na.rm = TRUE), na.rm = TRUE)
+  theta_cover_avg <- colMeans(colMeans(theta_cover_all, na.rm = TRUE), na.rm = TRUE)
   
   runtime_avg <- mean(runtime_all, na.rm = TRUE)
   
   #============== Return results ===============================================
   ret_list <- list(wts_bias = wts_bias, K_bias = K_bias, pi_bias = pi_bias, 
-                   pi_var = pi_var, theta_bias = theta_bias, theta_var = theta_var, 
+                   pi_var = pi_var, theta_bias = theta_bias, 
+                   theta_mode_bias = theta_mode_bias, theta_var = theta_var, 
                    pi_cover_avg = pi_cover_avg, theta_cover_avg = theta_cover_avg, 
-                   runtime_avg = runtime_avg, wts_dist = wts_dist, 
-                   K_dist = K_dist, pi_dist = pi_dist, theta_dist = theta_dist, 
+                   runtime_avg = runtime_avg, 
+                   # results over all sample iterations
+                   wts_dist = wts_dist, K_dist = K_dist, pi_dist = pi_dist, 
+                   theta_dist = theta_dist, theta_mode_dist = theta_mode_dist,
+                   pi_cover_all = rowMeans(pi_cover_all, na.rm = TRUE), # avg over k
+                   theta_cover_all = apply(theta_cover_all, 1, mean), # avg over j,k
+                   pi_var_all = pi_var_all, theta_var_all = theta_var_all, 
                    pi_mse_all = pi_mse_all, theta_mse_all = theta_mse_all)
   
   ret_list[["pi_all"]] <- pi_all
@@ -362,11 +373,17 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
       est_modes <- apply(estimates$theta_med[, order_sub_est, ], c(1,2), which.max)
       true_modes <- apply(true_params$true_theta[, order_sub_true, ], c(1,2), 
                           which.max)
-      # True modal probabilities for each item and class (pxK)
+      # True modal probabilities for each item and class (pxK_true)
       true_theta_modal <- apply(true_params$true_theta[ , order_sub_true, ], 
                                 c(1,2), max) 
+      # Estimated modal probabilities for each item and class (pxK)
+      est_theta_modal <- apply(estimates$theta_med[, order_sub_est, ], 
+                               c(1, 2), max)
+      # Get distance for modal probabilities
+      theta_mode_dist <- get_dist_wolcan(est_theta_modal, true_theta_modal, 
+                                         dist_type = dist_type) 
+      # Initialize theta_cover  
       theta_var_temp <- numeric(K_min)
-      # Initialize theta_cover
       theta_cover <- array(NA, dim = dim(true_params$true_theta)[c(1,2)])
       for (k in 1:K_min) {
         # Subset theta for cluster k
@@ -419,7 +436,8 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
                      pi_cover = pi_cover, pi_var = pi_var,  pi_mse = pi_mse, 
                      theta_cover = theta_cover, theta_var = theta_var, 
                      theta_mse = theta_mse, theta_mode = theta_mode, 
-                     mode_mis = mode_mis, pi = pi, K = K)
+                     theta_mode_dist = theta_mode_dist, mode_mis = mode_mis, 
+                     pi = pi, K = K)
       
       # Save summary metrics
       save(summ_i, file = paste0(save_path, "samp_", samp_i, "_", model, ".RData"))
@@ -572,7 +590,8 @@ get_true_params_wolcan <- function(sim_pop) {
 #==================== Tables ===================================================
 create_app_tables_wolcan <- function(save_paths, scenarios, scen_names, 
                                      overall_name, format = "latex", 
-                                     digits = 3, WOLCA = TRUE, WOLCAN = TRUE) {
+                                     digits = 3, WOLCA = TRUE, WOLCAN = TRUE,
+                                     modal = FALSE) {
   num_scen <- length(scenarios)
   # models depending on WOLCA and WOLCAN true/false
   model <- list()
@@ -596,7 +615,11 @@ create_app_tables_wolcan <- function(save_paths, scenarios, scen_names,
   metrics_wolcan_df[, 1] <- rep(scen_names, each = mult)
   metrics_wolcan_df[, 2] <- rep(model, num_scen)  
   # output_inds <- 1:7
-  output_inds <- c(1, 2, 3, 5, 4, 6)
+  if (modal) {  # use modal theta for bias
+    output_inds <- c(1, 2, 3, 6, 4, 7)
+  } else {  # use all theta for bias
+    output_inds <- c(1, 2, 3, 5, 4, 7)
+  }
   row_ind <- 1
   for (i in 1:num_scen) {
     save_path <- save_paths[i]
@@ -665,6 +688,31 @@ theta_mode_plot <- function(theta_plot_data, x_label) {
   return(patterns)
 }
 
+theta_mode_plot_wolcan <- function(theta_plot_data, x_label) {
+  p <- dim(theta_plot_data)[1]
+  K <- dim(theta_plot_data)[2]
+  Item <- factor(as.character(1:p), levels = as.character(p:1))
+  theta_plot <- data.frame(theta_plot_data, Item)
+  colnames(theta_plot) <- c(1:K, "Item")
+  theta_plot <- theta_plot %>% gather("Class", "Level", 1:K) 
+  patterns <- ggplot(theta_plot, aes(x=Class, y=Item, fill=as.factor(Level))) + 
+    theme_classic() +
+    xlab(x_label) +
+    geom_tile(color="black", linewidth = 0.1) + 
+    # geom_text(aes(label = round(Level,2)), col="white", cex=2.5) +
+    scale_fill_brewer(type = "seq", palette = "RdYlBu", direction = -1,
+                      name = "Level")
+    # scale_fill_gradient(trans = "reverse")
+  return(patterns)
+}
+
+ggplot(theta_plot, aes(x=Class, y=Item, fill=as.factor(Level))) + 
+  theme_classic() +
+  xlab(x_label) +
+  geom_tile(color="black", linewidth = 0.1) + 
+  # geom_text(aes(label = round(Level,2)), col="white", cex=2.5) +
+  scale_fill_brewer(type = "seq", palette = "RdYlBu", direction = -1,
+                    name = "Level")
 #===================== Plot pi =================================================
 
 plot_pi_patterns_wolcan <- function(wd, data_dir, scenario, samp_i_seq, 
