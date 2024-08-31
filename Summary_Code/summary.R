@@ -274,4 +274,45 @@ plot_pi_patterns_wolcan(wd = wd, data_dir = data_dir, scenario = scenario,
                         samp_i_seq = samp_i_seq, save_path = save_path,
                         y_lim = c(0,1))
 
+#================== Run simulations and summary for outcome model ==============
+library(survey)
+pop$Y <- Y_data
 
+test <- glm(as.formula(Y ~ c_all + A1 + A2 + c_all:A1), data = pop, 
+            family = binomial(link = "logit"))
+round(summary(test)$coefficients[, 1], 3)
+xi_vec_y
+
+samp_data <- data.frame(c_all = sim_samp_B$c_all, Y = sim_samp_B$Y_data, 
+                        sim_samp_B$covs, wts = 1/sim_samp_B$true_pi_B, 
+                        clus = 1:nrow(sim_samp_B$covs))
+svy_des <- survey::svydesign(ids = ~clus, weights = ~wts, data = samp_data)
+svy_test <- survey::svyglm(formula = as.formula(Y ~ c_all + A1 + A2 + c_all:A1),
+                           design = svy_des, 
+                           family = stats::binomial(link = "logit"))
+round(summary(svy_test)$coefficients[, 1], 3)
+
+# True parameters
+xi_vec_y
+
+scenarios <- c(0, 6:12)
+xi_est <- as.data.frame(matrix(NA, nrow = length(scenarios), 
+                               ncol = length(xi_vec_y)))
+for (scenario in scenarios) {
+  # Load data
+  
+  # Load model output
+  
+  # Run survey-weighted regression
+  
+  # Save results
+  
+  ### Summary metrics
+  # Get best order
+  
+  # Calculate bias
+  
+  # Calculate variance
+  
+  # Calculate coverage
+}

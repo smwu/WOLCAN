@@ -926,7 +926,7 @@ wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn,
   
   # Initialize fixed sampler hyperparameters
   if (is.null(alpha_fixed)) {
-    alpha_fixed = rep(1, K)  # not sparsity-inducing
+    alpha_fixed = rep(K, K)  # not sparsity-inducing
   }
   # Run fixed sampler
   res_d <- baysc::wolca(x_mat = x_mat, sampling_wt = wts_d, run_sampler = "fixed", 

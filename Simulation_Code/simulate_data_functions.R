@@ -21,6 +21,7 @@ root_n <- function(x, n) {
 # selection mechanism should have high overlap (default = TRUE) or low overlap.
 sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R, 
                            formula_c, beta_mat_c, formula_x, beta_list_x, 
+                           formula_y = NULL, xi_vec_y = NULL,
                            save_res = TRUE, save_path = NULL, pop_seed = 1) {
   
   # Set seed
@@ -131,13 +132,32 @@ sim_pop_wolcan <- function(N, J, K, R, rho, high_overlap = TRUE, n_B, n_R,
     true_global_patterns[j, ] <- apply(out_vars_x$pi_split, 1, which.max)
   }
   
+  ### Generate outcome variable Y
+  if (!is.null(formula_y)) {
+    # Design matrix
+    design_mat_y <- stats::model.matrix(stats::as.formula(formula_y), data = pop)
+    # Get vector of individual linear predictors
+    lin_pred <- design_mat_y %*% xi_vec_y
+    # Get vector of individual underlying outcome probabilities
+    true_Phi_under <- exp(lin_pred) / (1 + exp(lin_pred))
+    # Outcome data
+    Y_data <- stats::rbinom(n = N, size = 1, prob = true_Phi_under)
+    
+    # hist(true_Phi_under)
+    # summary(true_Phi_under)
+  } else {
+    Y_data <- NULL
+  }
+  
+  
   ### Add to population data and save
   sim_pop <- list(N = N, J = J, R = R, K = K, 
                   pop = pop[, c("A1", "A2", "A12", "A1A2", "logA2", "sinA1A2", "A3")], 
                   # A1 = pop$A1, A2 = pop$A2, A12 = pop$A12, A1A2 = pop$A1A2, 
                   # logA2 = pop$logA2, sinA1A2 = pop$sinA1A2, 
                   pi_R = pop$pi_R, pi_B = pop$pi_B, 
-                  c_all = pop$c_all, X_data = X_data, 
+                  c_all = pop$c_all, X_data = X_data, Y_data = Y_data,
+                  true_xi = xi_vec_y,
                   true_global_thetas = true_global_thetas, 
                   true_global_patterns = true_global_patterns)
   
@@ -202,7 +222,9 @@ sim_samp_wolcan <- function(i, sim_pop, scenario,
     true_pi_B = sim_pop$pi_B[ind_B], 
     true_pi_R = sim_pop$pi_R[ind_B],
     c_all = sim_pop$c_all[ind_B], 
-    X_data = sim_pop$X_data[ind_B, ], delta_B = delta_B)
+    X_data = sim_pop$X_data[ind_B, ], 
+    Y_data = sim_pop$Y_data[ind_B],
+    delta_B = delta_B)
   # Subset to the reference sample
   sim_samp_R <- list(
     # indices, covariates, known pi_R, c_all, and X_data for selected individuals
@@ -210,7 +232,9 @@ sim_samp_wolcan <- function(i, sim_pop, scenario,
     covs = sim_pop$pop[ind_R, c("A1", "A2", "A12", "A1A2", "logA2", "sinA1A2", "A3")], 
     pi_R = sim_pop$pi_R[ind_R], 
     c_all = sim_pop$c_all[ind_R], 
-    X_data = sim_pop$X_data[ind_R, ], delta_R = delta_R)
+    X_data = sim_pop$X_data[ind_R, ], 
+    Y_data = sim_pop$Y_data[ind_R],
+    delta_R = delta_R)
   
   # Save and return results
   if (save_res) {
