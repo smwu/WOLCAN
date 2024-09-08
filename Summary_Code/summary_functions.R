@@ -448,6 +448,111 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
   return(summ_i)
 }
 
+# Function to get y outcome model performance metrics for one iteration
+# subset: Subset to the minimum number of classes
+get_y_metrics_i <- function(res, true_params, true_K, dist_type, 
+                            sim_samp_B, model, subset = FALSE, 
+                            method = c("svyglm", "bayes"),
+                            true_c_all = NULL) {
+  
+  xi_dist <- xi_var_mean <- xi_cover_mean <- NA
+  
+  if (model == "wolcan") {
+    estimates <- res$estimates_adjust
+  } else if (model == "wolca") {
+    estimates <- res$estimates
+  } else {
+    stop("Incorrect model specification")
+  }
+  K <- length(estimates$pi_med)
+  
+  # Get best order for classes to match true classes
+  theta_perm <- get_theta_dist_wolcan(est_theta = estimates$theta_med, 
+                                      true_theta = true_params$true_theta, 
+                                      est_K = K, true_K = true_K, subset = subset,
+                                      dist_type = dist_type)
+  theta_dist <- theta_perm$theta_dist
+  order <- theta_perm$order
+  
+  extra <- missing <- 0
+  if (!subset) {
+    if (K > true_K) {
+      extra <- K - true_K
+      order <- c(order, setdiff(1:K, order))
+    } else if (K < true_K) {
+      missing <- true_K - K
+    } 
+  } else {
+    K <- min(K, true_K)
+  }
+  order_sub_est <- theta_perm$order_sub_est
+  order_sub_true <- theta_perm$order_sub_true
+  
+  # Use true class categorization if specified
+  if (!is.null(true_c_all)) {
+    c_all = true_c_all
+  } else {
+    c_all = factor(estimates$c_all, levels = order,
+                   labels = 1:K)
+  }
+  
+  if (model == "wolcan") {
+    if (method == "svyglm") {
+      # Run survey-weighted regression
+      svy_data <- data.frame(c_all = c_all, 
+                             y_all = sim_samp_B$Y_data,
+                             A1 = sim_samp_B$covs$A1,
+                             A2 = sim_samp_B$covs$A2,
+                             wts = res$data_vars$sampling_wt, 
+                             clus = 1:length(sim_samp_B$Y_data))
+      svy_des <- survey::svydesign(ids = ~clus, weights = ~wts, data = svy_data)
+      log_reg <- survey::svyglm(formula = as.formula(formula_y),
+                                design = svy_des, 
+                                family = stats::quasibinomial(link = "logit"))
+    } else if (method == "bayes") {
+      
+    }
+    
+  } else if (model == "wolca") {
+    # Run unweighted regression
+    svy_data <- data.frame(c_all = c_all, 
+                           y_all = sim_samp_B$Y_data,
+                           A1 = sim_samp_B$covs$A1,
+                           A2 = sim_samp_B$covs$A2)
+    log_reg <- stats::glm(formula = as.formula(formula_y), data = svy_data, 
+                          family = stats::quasibinomial(link = "logit"))
+  }
+  xi_est <- log_reg$coefficients
+  
+  # Add 0s for missing or extra classes
+  if (missing > 0) {
+    xi_est <- c(xi_est[1:(true_K - missing)], rep(0, times = missing), 
+                xi_est[-c(1:(true_K - missing))], rep(0, times = missing))
+  } else if (extra > 0) {
+    xi_vec_y <- c(xi_vec_y[1:true_K], rep(0, times = extra), 
+                  xi_vec_y[-c(1:true_K)], rep(0, times = extra))
+  }
+  
+  
+  ### Summary metrics
+  # Calculate bias
+  xi_dist <- get_dist_wolcan(par1 = xi_est, par2 = xi_vec_y, 
+                             dist_type = dist_type)
+  
+  # Calculate variance
+  xi_CI <- confint(log_reg)
+  xi_var <- xi_CI[, 2] - xi_CI[, 1]
+  xi_var_mean <- mean(xi_var)
+  
+  
+  # Calculate coverage
+  xi_cover <- ifelse((xi_vec_y >= xi_CI[, 1]) & (xi_vec_y <= xi_CI[, 2]), 
+                     1, 0)
+  xi_cover_mean <- mean(xi_cover)
+  
+  return(list(xi_dist = xi_dist, xi_var_mean = xi_var_mean, 
+              xi_cover_mean = xi_cover_mean))
+}
 
 get_subset_dist_wolcan <- function(large_par, small_par, param_name, dist_type) {
   if (param_name == "theta") {
@@ -706,13 +811,6 @@ theta_mode_plot_wolcan <- function(theta_plot_data, x_label) {
   return(patterns)
 }
 
-ggplot(theta_plot, aes(x=Class, y=Item, fill=as.factor(Level))) + 
-  theme_classic() +
-  xlab(x_label) +
-  geom_tile(color="black", linewidth = 0.1) + 
-  # geom_text(aes(label = round(Level,2)), col="white", cex=2.5) +
-  scale_fill_brewer(type = "seq", palette = "RdYlBu", direction = -1,
-                    name = "Level")
 #===================== Plot pi =================================================
 
 plot_pi_patterns_wolcan <- function(wd, data_dir, scenario, samp_i_seq, 

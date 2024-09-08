@@ -245,32 +245,37 @@ displ %>%
   kbl(digits = 3, format = "html", booktabs = TRUE) %>%
   kable_classic(full_width = FALSE)
 
-# Plot comparison for high and low overlap
+#================ Plot comparison for high and low overlap
 plot_df <- displ 
 plot_df %>%
   pivot_longer(cols = `No Model`:BART1000Miss, names_to = "Model", 
                values_to = "mean_abs_bias") %>%
-  ggplot(aes(x = `Sample Size`, y = mean_abs_bias, fill = fct_rev(Model))) + 
+  mutate(Model = factor(Model, 
+    levels = c("No Model", "LogReg", "BART500",  "BART1000", "BART2000", 
+               "LogRegMiss","BART1000Miss"))) %>%
+  ggplot(aes(x = `Sample Size`, y = mean_abs_bias, fill = Model)) + 
   theme_bw() + geom_bar(stat = "identity", position = position_dodge()) + 
   facet_grid(.~Overlap, labeller = as_labeller(c("High" = "High Overlap",
                                                  "Low" = "Low Overlap"))) + 
   scale_fill_brewer(palette = "Set2") + 
   ylab("Mean Absolute Bias for Pseudo-Weights") + 
   labs(fill = "Model") + 
-  theme(legend.position = "right",
+  theme(legend.position = "bottom",
         strip.background = element_rect(fill="aliceblue")) +
+  guides(fill = guide_legend(nrow = 1)) + 
   scale_x_discrete(name = "Sample Size",
                    limits = c("$n_B 5\\%, n_R 5\\%$", 
                               "$n_B 5\\%, n_R 1\\%$",
                               "$n_B 1\\%, n_R 5\\%$",
                               "$n_B 1\\%, n_R 1\\%$"),
-                   labels = c(expression(n[B]*" 5%, "*n[R]*" 5%"),
-                              expression(n[B]*" 5%, "*n[R]*" 1%"),
-                              expression(n[B]*" 1%, "*n[R]*" 5%"),
-                              expression(n[B]*" 1%, "*n[R]*" 1%")))
+                   labels = c(expression(atop(n[B]*" 5%", n[R]*" 5%")),
+                              expression(atop(n[B]*" 5%", n[R]*" 1%")),
+                              expression(atop(n[B]*" 1%", n[R]*" 5%")),
+                              expression(atop(n[B]*" 1%", n[R]*" 1%"))))
+ggsave(paste0(wd, "Figures/weights_sims.png"), width = 8.5, height = 5, 
+       dpi = 700, device = png)
 
-
-# Plot comparison of BART number of posterior samples
+#================ Plot comparison of BART number of posterior samples
 weights_res_mean %>%
   pivot_longer(cols = bart_500:bart_2000, names_to = "num_post", 
                values_to = "mean_abs_bias") %>%
@@ -279,3 +284,74 @@ weights_res_mean %>%
   ggplot(aes(x = as.factor(scenario), y = mean_abs_bias, fill = `BART Samples`)) + 
   theme_bw() + geom_bar(stat = "identity", position = position_dodge()) + 
   xlab("Scenario") + ylab("Mean Absolute Bias for Weights")
+
+#================ Plot single realization of high overlap vs low overlap
+# High overlap
+load(paste0(wd, data_dir, "scen_0/", "sim_pop_wolcan.RData"))
+load(paste0(wd, data_dir, "scen_0/", "sim_samp_1_B_wolcan.RData"))
+load(paste0(wd, data_dir, "scen_0/", "sim_samp_1_R_wolcan.RData"))
+n_B <- length(sim_samp_B$ind_B)
+n_R <- length(sim_samp_R$ind_R)
+comb_df <- data.frame(unit_sample = c(rep("S[B]", n_B), rep("S[R]", n_R)))
+comb_df$pi_B <- c(sim_samp_B$true_pi_B, sim_pop$pi_B[sim_samp_R$ind_R])
+comb_df$pi_R <- c(sim_samp_B$true_pi_R, sim_pop$pi_R[sim_samp_R$ind_R])
+# Sort by ind_B, then ind_R, and then sort within by pi_B
+comb_df <- comb_df %>%
+  arrange(unit_sample, pi_B) %>%
+  mutate(Unit = 1:nrow(comb_df))
+# Convert to long format
+comb_df_long <- comb_df %>%
+  pivot_longer(cols = pi_B:pi_R, names_to = "Sample", 
+               values_to = "Inclusion Probability")
+comb_df_long %>% 
+  ggplot(aes(x = Unit, y = `Inclusion Probability`)) + 
+  theme_bw() + 
+  scale_color_brewer(palette = "Set2", 
+                     labels = c(expression(pi[i]^B), expression(pi[i]^R))) + 
+  facet_grid(. ~ unit_sample, scales = "free_x", 
+             labeller = label_parsed) + 
+  # facet_grid(Sample ~ unit_sample, scales = "free_x") + 
+  geom_line(aes(size = Sample, alpha = Sample, col = Sample)) + 
+  scale_size_manual(values = c(0.6, 0.3), 
+                    labels = c(expression(pi[i]^B), expression(pi[i]^R))) + 
+  scale_alpha_manual(values = c(1, 0.6), 
+                     labels = c(expression(pi[i]^B), expression(pi[i]^R))) + 
+  theme(strip.background = element_rect(fill="aliceblue"))
+
+ggsave(paste0(wd, "Figures/high_overlap.png"), width = 8.5, height = 3, 
+       dpi = 700, device = png)
+
+# Low overlap
+load(paste0(wd, data_dir, "scen_10/", "sim_pop_wolcan.RData"))
+load(paste0(wd, data_dir, "scen_10/", "sim_samp_1_B_wolcan.RData"))
+load(paste0(wd, data_dir, "scen_10/", "sim_samp_1_R_wolcan.RData"))
+n_B <- length(sim_samp_B$ind_B)
+n_R <- length(sim_samp_R$ind_R)
+comb_df <- data.frame(unit_sample = c(rep("S[B]", n_B), rep("S[R]", n_R)))
+comb_df$pi_B <- c(sim_samp_B$true_pi_B, sim_pop$pi_B[sim_samp_R$ind_R])
+comb_df$pi_R <- c(sim_samp_B$true_pi_R, sim_pop$pi_R[sim_samp_R$ind_R])
+# Sort by ind_B, then ind_R, and then sort within by pi_B
+comb_df <- comb_df %>%
+  arrange(unit_sample, pi_B) %>%
+  mutate(Unit = 1:nrow(comb_df))
+# Convert to long format
+comb_df_long <- comb_df %>%
+  pivot_longer(cols = pi_B:pi_R, names_to = "Sample", 
+               values_to = "Inclusion Probability")
+comb_df_long %>% 
+  ggplot(aes(x = Unit, y = `Inclusion Probability`)) + 
+  theme_bw() + 
+  scale_color_brewer(palette = "Set2", 
+                     labels = c(expression(pi[i]^B), expression(pi[i]^R))) + 
+  facet_grid(. ~ unit_sample, scales = "free_x", 
+             labeller = label_parsed) + 
+  # facet_grid(Sample ~ unit_sample, scales = "free_x") + 
+  geom_line(aes(size = Sample, alpha = Sample, col = Sample)) + 
+  scale_size_manual(values = c(0.6, 0.3), 
+                    labels = c(expression(pi[i]^B), expression(pi[i]^R))) + 
+  scale_alpha_manual(values = c(1, 0.6), 
+                     labels = c(expression(pi[i]^B), expression(pi[i]^R))) + 
+  theme(strip.background = element_rect(fill="aliceblue"))
+
+ggsave(paste0(wd, "Figures/low_overlap.png"), width = 8.5, height = 3, 
+       dpi = 700, device = png)
