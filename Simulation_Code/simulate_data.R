@@ -89,19 +89,13 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
 # round(get_categ_probs(beta_mat = beta_list_x[[1]], formula = formula_x,
 #                       V_unique = V_unique), 3)
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 2000  # Sample size for non-probability sample
 n_R <- 2000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -176,19 +170,13 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
 # round(get_categ_probs(beta_mat = beta_list_x[[1]], formula = formula_x,
 #                       V_unique = V_unique), 3)
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 2000  # Sample size for non-probability sample
 n_R <- 2000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -257,19 +245,13 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
   cbind(beta_list_x_temp[[j]], A1 = c(0, 0, 2, 0), A3 = rep(0, 4), 
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 400  # Sample size for non-probability sample
 n_R <- 400  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -339,19 +321,13 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
   cbind(beta_list_x_temp[[j]], A1 = c(0, 0, 2, 0), A3 = rep(0, 4), 
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 2000  # Sample size for non-probability sample
 n_R <- 100000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -421,19 +397,13 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
   cbind(beta_list_x_temp[[j]], A1 = c(0, 0, 2, 0), A3 = rep(0, 4), 
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 2000  # Sample size for non-probability sample
 n_R <- 2000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = FALSE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -485,19 +455,13 @@ beta_list_x <- get_betas_x(profiles = profiles, R = R,
 #                                       A2 = c(-8, -1.5, 0, 1.5, 8)))
 # get_categ_probs(beta_mat = beta_list_x[[1]], formula = formula_x, V_unique = V_unique)
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 2000  # Sample size for non-probability sample
 n_R <- 2000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -567,19 +531,13 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
   cbind(beta_list_x_temp[[j]], A1 = c(0, 0, 2, 0), A3 = rep(0, 4), 
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 400  # Sample size for non-probability sample
 n_R <- 2000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -649,19 +607,13 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
   cbind(beta_list_x_temp[[j]], A1 = c(0, 0, 2, 0), A3 = rep(0, 4), 
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 2000  # Sample size for non-probability sample
 n_R <- 400  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -905,19 +857,13 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
   cbind(beta_list_x_temp[[j]], A1 = c(0, 0, 2, 0), A3 = rep(0, 4), 
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 2000  # Sample size for non-probability sample
 n_R <- 100000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = FALSE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
@@ -979,11 +925,6 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
   cbind(beta_list_x_temp[[j]], A1 = c(0, 0, 2, 0), A3 = rep(0, 4), 
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 for (i in 1:length(scenario_list)) {
   scenario <- scenario_list[i]
   pop_seed <- scenario  # Set seed
@@ -1005,8 +946,7 @@ for (i in 1:length(scenario_list)) {
   sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                             n_R = n_R, high_overlap = FALSE, formula_c = formula_c, 
                             beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                            beta_list_x = beta_list_x, formula_y = formula_y, 
-                            xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                            beta_list_x = beta_list_x, pop_seed = pop_seed, 
                             save_res = TRUE, save_path = dir_path) 
   
   ### Generate samples
@@ -1076,19 +1016,13 @@ V_unique <- as.data.frame(expand.grid(c_all = as.factor(1:K),
 round(get_categ_probs(beta_mat = beta_list_x[[1]], formula = formula_x,
                       V_unique = V_unique), 3)
 
-### Parameters for generating binary outcome variable Y
-formula_y <- "~ c_all + A1 + A2 + c_all:A1"
-# xi0 + xi1*I(C=2) + xi2*I(C=3) + xi3*A1 + xi4*A2 + xi5*I(C=2):A1 + xi6*I(C=3):A1
-xi_vec_y <- c(-0.65, 1, -0.9, 0.4, -0.3, -0.1, 0.1)
-
 ### Generate population
 n_B <- 2000  # Sample size for non-probability sample
 n_R <- 2000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
-                          beta_list_x = beta_list_x, formula_y = formula_y, 
-                          xi_vec_y = xi_vec_y, pop_seed = pop_seed, 
+                          beta_list_x = beta_list_x, pop_seed = pop_seed, 
                           save_res = TRUE, save_path = dir_path) 
 
 ### Generate samples
