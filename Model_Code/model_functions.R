@@ -48,6 +48,8 @@
 #   num_reps: Number of bootstrap replicates for the WS variance adjustment
 #   pred_model: String specifying type of prediction model to use to create the 
 # pseudo-weights. Must be one of `"bart"` (default) or `"glm"`.
+# overwrite: Whether to overwrite existing results. Default is TRUE.
+# weights_only: Whether only the weights should be obtained. Default is FALSE.
 # Outputs:
 # 
 wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"), 
@@ -62,7 +64,8 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
                    n_runs = 20000, burn = 10000, thin = 5, update = 1000,
                    save_res = TRUE, save_path = NULL,
                    alpha_adapt = NULL, eta_adapt = NULL,
-                   alpha_fixed = NULL, eta_fixed = NULL) {
+                   alpha_fixed = NULL, eta_fixed = NULL, 
+                   overwrite = TRUE, weights_only = FALSE) {
   
   # Check errors
   if (!run_adapt) {
@@ -92,140 +95,158 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
   }
   
   #================ Get pseudo-weights =========================================
-  print("Getting pseudo-weights...")
-  est_weights <- get_weights_bart(dat_B = dat_B, dat_R = dat_R, 
-                                  pred_model = pred_model,
-                                  pred_covs_B = pred_covs_B, 
-                                  pred_covs_R = pred_covs_R, 
-                                  num_post = num_post, pi_R = pi_R, 
-                                  hat_pi_R = hat_pi_R,
-                                  frame_B = frame_B, frame_R = frame_R,
-                                  trim_method = trim_method, trim_c = trim_c)
+  
+  if (file.exists(paste0(save_path, "_wolcan_weights.RData")) & !overwrite) {
+    # Load weights if they already exist
+    load(paste0(save_path, "_wolcan_weights.RData"))
+    
+  } else {
+    print("Getting pseudo-weights...")
+    est_weights <- get_weights_bart(dat_B = dat_B, dat_R = dat_R, 
+                                    pred_model = pred_model,
+                                    pred_covs_B = pred_covs_B, 
+                                    pred_covs_R = pred_covs_R, 
+                                    num_post = num_post, pi_R = pi_R, 
+                                    hat_pi_R = hat_pi_R,
+                                    frame_B = frame_B, frame_R = frame_R,
+                                    trim_method = trim_method, trim_c = trim_c)
+    # Save weights
+    if (save_res) {
+      save(est_weights, file = paste0(save_path, "_wolcan_weights.RData"))
+    }
+  } 
+  
   # Mean estimated weights
   wts <- est_weights$wts
   # Posterior distribution of weights
   wts_post <- est_weights$wts_post
   
-  # Save weights
-  if (save_res) {
-    save(est_weights, file = paste0(save_path, "_wolcan_weights.RData"))
-  }
-  
   #================ Run WOLCA model with mean weights ==========================
-  if (run_adapt) {
-    ### Using mean estimated weights, run WOLCA model adaptive sampler to obtain 
-    ### number of latent classes K
-    print("Obtaining number of latent classes...")
-    res <- wolca(x_mat = x_mat, sampling_wt = wts, run_sampler = "adapt", 
-                        K_max = K_max, adapt_seed = adapt_seed, 
-                        class_cutoff = class_cutoff, 
-                        n_runs = n_runs, burn = burn, thin = thin, 
-                        update = update, save_res = FALSE, 
-                        alpha_adapt = alpha_adapt, eta_adapt = eta_adapt)
-    
-    # Post-processing to recalibrate labels and remove extraneous empty classes
-    res$post_MCMC_out <- post_process_wolca(MCMC_out = res$MCMC_out, J = J, 
-                                                   R = R, class_cutoff = class_cutoff)
-    
-    # Obtain posterior estimates, reduce number of classes, analyze results
-    res$estimates <- get_estimates_wolca(MCMC_out = res$MCMC_out, 
-                                                post_MCMC_out = res$post_MCMC_out, 
-                                                n = n, J = J, x_mat = x_mat)
-    # Save space
-    res$MCMC_out <- NULL
-  }
-  
-  # Define K, depending on if adaptive sampler results exist
-  if (run_adapt) {
-    K <- res$estimates$K_red
-  } else {
-    K <- K_fixed
-    # Initialize results list
-    res <- list()
-  }
-  print(paste0("K: ", K))
-  # if (run_sampler == "adapt") {
-  #   K <- res$K_fixed
-  # } else {
-  #   K <- res$estimates$K_red
-  # }
-  
-  #================ Calculate variance for WOLCA using MI ======================
-  # Hyperparameter for prior for pi
-  if (is.null(alpha_fixed)) {
-    alpha_fixed <- rep(K, K)
-  }
-  # Hyperparameter for prior for theta
-  # Unviable categories have value 0.01 to prevent rank deficiency issues
-  if (is.null(eta_fixed)) {
-    eta_fixed <- matrix(0.01, nrow = J, ncol = R) 
-    for (j in 1:J) {
-      eta_fixed[j, 1:R_j[j]] <- rep(1, R_j[j]) 
-    }
-  }
-  
-  if (wts_adj == "MI") {
-    # Get estimates by running the WOLCA fixed sampler for multiple draws from the 
-    # weights posterior, using parallelization if desired. 
-    # Apply post-processing variance adjustment for proper variance estimation.
-    print("Running estimation and variance...")
-    comb_estimates <- get_var_dir(D = D, wts_post = wts_post, K = K, 
-                                  tol = tol, parallel = parallel, 
-                                  n_cores = n_cores, adjust = adjust, 
-                                  x_mat = x_mat, fixed_seed = fixed_seed,
-                                  class_cutoff = class_cutoff, n_runs = n_runs, 
-                                  burn = burn, thin = thin, update = update, 
-                                  alpha_fixed = alpha_fixed, eta_fixed = eta_fixed)
-    
-    # Add variance estimates to output list
-    res$estimates_adjust <- comb_estimates
-  
-  } else {    # Run fixed sampler
-    
-    print("Running fixed sampler...")
-    
-    # Set seed
-    if (!is.null(fixed_seed)) {
-      set.seed(fixed_seed)
-    }
-    
-    # Initialize OLCA model using fixed number of classes. Obtain pi, theta, c_all
-    OLCA_params <- init_OLCA(alpha = alpha_fixed, eta = eta_fixed, n = n,
-                             K = K, J = J, R = R)
-    # Run MCMC algorithm using fixed number of classes
-    # Obtain pi_MCMC, theta_MCMC, c_all_MCMC
-    w_all <- c(wts / (sum(wts) / n)) # Mean weights normalized to sum to n
-    res$MCMC_out <- run_MCMC_Rcpp_wolca(OLCA_params = OLCA_params, n_runs = n_runs, 
-                                    burn = burn, thin = thin, K = K, J = J, 
-                                    R = R, n = n, w_all = w_all, x_mat = x_mat, 
-                                    alpha = alpha_fixed, eta = eta_fixed,
-                                    update = update)
-    # Post-processing to recalibrate labels and remove extraneous empty classes
-    # Obtain K_med, pi, theta
-    res$post_MCMC_out <- post_process_wolca(MCMC_out = res$MCMC_out, J = J, R = R,
-                                        class_cutoff = class_cutoff)
-    # Obtain posterior estimates, reduce number of classes, analyze results
-    # Obtain K_red, pi_red, theta_red, pi_med, theta_med, c_all, pred_class_probs
-    res$estimates <- get_estimates_wolca(MCMC_out = res$MCMC_out, 
-                                     post_MCMC_out = res$post_MCMC_out, n = n, J = J,
-                                     x_mat = x_mat)
-    K_red <- res$estimates$K_red
-    print(paste0("K_red: ", K_red))
-    
-    if (wts_adj == "WS all") {
-      print("Accounting for weights uncertainty...")
-      res$estimates_adjust <- suppressMessages(
-        get_var_adj(D = D, K = K_red, res = res, wts_post = wts_post, tol = tol,
-                    num_reps = num_reps, save_res = save_res, 
-                    save_path = save_path, adjust_seed = fixed_seed))
-    } else if (wts_adj == "WS mean") {
-      print("Using mean weights...")
-      res$estimates_adjust <- suppressMessages(
-        get_var_adj_mean(K = K_red, res = res, wts = wts, tol = tol, 
-                         num_reps = num_reps, save_res = save_res, 
-                         save_path = save_path, adjust_seed = fixed_seed))
+  if (!weights_only) {
+    if (run_adapt) {
+      # Load adaptive results if they already exist
+      if (file.exists(paste0(save_path, "_wolcan_adapt.RData")) & !overwrite) {
+        load(paste0(save_path, "_wolcan_adapt.RData"))
+      } else {
+        ### Using mean estimated weights, run WOLCA model adaptive sampler to obtain 
+        ### number of latent classes K
+        print("Obtaining number of latent classes...")
+        res <- wolca(x_mat = x_mat, sampling_wt = wts, run_sampler = "adapt", 
+                     K_max = K_max, adapt_seed = adapt_seed, 
+                     class_cutoff = class_cutoff, 
+                     n_runs = n_runs, burn = burn, thin = thin, 
+                     update = update, save_res = FALSE, 
+                     alpha_adapt = alpha_adapt, eta_adapt = eta_adapt)
+        
+        # Post-processing to recalibrate labels and remove extraneous empty classes
+        res$post_MCMC_out <- post_process_wolca(MCMC_out = res$MCMC_out, J = J, 
+                                                R = R, class_cutoff = class_cutoff)
+        
+        # Obtain posterior estimates, reduce number of classes, analyze results
+        res$estimates <- get_estimates_wolca(MCMC_out = res$MCMC_out, 
+                                             post_MCMC_out = res$post_MCMC_out, 
+                                             n = n, J = J, x_mat = x_mat)
+        # Save adaptive sampler results
+        if (save_res) {
+          save(res, file = paste0(save_path, "_wolcan_adapt.RData"))
+        }
+      }
+      # Save space
+      res$MCMC_out <- NULL
+      
+      # Define K, depending on if adaptive sampler results exist
+      K <- res$estimates$K_red
+      
     } else {
-      print("Not accounting for weights uncertainty...")
+      # Define K
+      K <- K_fixed
+      # Initialize results list
+      res <- list()
+    }
+    print(paste0("K: ", K))
+    # if (run_sampler == "adapt") {
+    #   K <- res$K_fixed
+    # } else {
+    #   K <- res$estimates$K_red
+    # }
+    
+    #================ Calculate variance for WOLCA using MI ======================
+    # Hyperparameter for prior for pi
+    if (is.null(alpha_fixed)) {
+      alpha_fixed <- rep(K, K)
+    }
+    # Hyperparameter for prior for theta
+    # Unviable categories have value 0.01 to prevent rank deficiency issues
+    if (is.null(eta_fixed)) {
+      eta_fixed <- matrix(0.01, nrow = J, ncol = R) 
+      for (j in 1:J) {
+        eta_fixed[j, 1:R_j[j]] <- rep(1, R_j[j]) 
+      }
+    }
+    
+    if (wts_adj == "MI") {
+      # Get estimates by running the WOLCA fixed sampler for multiple draws from the 
+      # weights posterior, using parallelization if desired. 
+      # Apply post-processing variance adjustment for proper variance estimation.
+      print("Running estimation and variance...")
+      comb_estimates <- get_var_dir(D = D, wts_post = wts_post, K = K, 
+                                    tol = tol, parallel = parallel, 
+                                    n_cores = n_cores, adjust = adjust, 
+                                    x_mat = x_mat, fixed_seed = fixed_seed,
+                                    class_cutoff = class_cutoff, n_runs = n_runs, 
+                                    burn = burn, thin = thin, update = update, 
+                                    alpha_fixed = alpha_fixed, eta_fixed = eta_fixed)
+      
+      # Add variance estimates to output list
+      res$estimates_adjust <- comb_estimates
+      
+    } else {    # Run fixed sampler
+      
+      print("Running fixed sampler...")
+      
+      # Set seed
+      if (!is.null(fixed_seed)) {
+        set.seed(fixed_seed)
+      }
+      
+      # Initialize OLCA model using fixed number of classes. Obtain pi, theta, c_all
+      OLCA_params <- init_OLCA(alpha = alpha_fixed, eta = eta_fixed, n = n,
+                               K = K, J = J, R = R)
+      # Run MCMC algorithm using fixed number of classes
+      # Obtain pi_MCMC, theta_MCMC, c_all_MCMC
+      w_all <- c(wts / (sum(wts) / n)) # Mean weights normalized to sum to n
+      res$MCMC_out <- run_MCMC_Rcpp_wolca(OLCA_params = OLCA_params, n_runs = n_runs, 
+                                          burn = burn, thin = thin, K = K, J = J, 
+                                          R = R, n = n, w_all = w_all, x_mat = x_mat, 
+                                          alpha = alpha_fixed, eta = eta_fixed,
+                                          update = update)
+      # Post-processing to recalibrate labels and remove extraneous empty classes
+      # Obtain K_med, pi, theta
+      res$post_MCMC_out <- post_process_wolca(MCMC_out = res$MCMC_out, J = J, R = R,
+                                              class_cutoff = class_cutoff)
+      # Obtain posterior estimates, reduce number of classes, analyze results
+      # Obtain K_red, pi_red, theta_red, pi_med, theta_med, c_all, pred_class_probs
+      res$estimates <- get_estimates_wolca(MCMC_out = res$MCMC_out, 
+                                           post_MCMC_out = res$post_MCMC_out, n = n, J = J,
+                                           x_mat = x_mat)
+      K_red <- res$estimates$K_red
+      print(paste0("K_red: ", K_red))
+      
+      if (wts_adj == "WS all") {
+        print("Accounting for weights uncertainty...")
+        res$estimates_adjust <- suppressMessages(
+          get_var_adj(D = D, K = K_red, res = res, wts_post = wts_post, tol = tol,
+                      num_reps = num_reps, save_res = save_res, 
+                      save_path = save_path, adjust_seed = fixed_seed))
+      } else if (wts_adj == "WS mean") {
+        print("Using mean weights...")
+        res$estimates_adjust <- suppressMessages(
+          get_var_adj_mean(K = K_red, res = res, wts = wts, tol = tol, 
+                           num_reps = num_reps, save_res = save_res, 
+                           save_path = save_path, adjust_seed = fixed_seed))
+      } else {
+        print("Not accounting for weights uncertainty...")
+      }
     }
   }
   
@@ -242,7 +263,7 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
                                          pred_covs_B = pred_covs_B, 
                                          pred_covs_R = pred_covs_R, pi_R = pi_R))
   
-  class(res) <- "wolcan"
+  class(res) <- "wolca"
   
   # Save output
   if (save_res) {
@@ -381,9 +402,9 @@ get_var_adj_mean <- function(K, res, wts, tol, num_reps = 100,
     print(paste0("H_inv: absolute eigenvalue difference to nearest p.d. matrix: ", 
                  H_inv_pd_diff))
     if (H_inv_pd_diff > 5) {
-      stop("NaNs created during variance adjustment, likely due to lack of 
-      smoothness in the posterior. Please run the sampler for more iterations or 
-      do not run variance adjustment.")
+      stop(paste0("NaNs created during variance adjustment, likely due to lack of ",
+      "smoothness in the posterior. Please run the sampler for more iterations or ", 
+      "do not run variance adjustment."))
     }
   } else {
     R2_inv <- chol(H_inv)
@@ -694,7 +715,8 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                          class_cutoff = class_cutoff, n_runs = n_runs, 
                          burn = burn, thin = thin, update = update,
                          fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
-                         eta_fixed = eta_fixed, D = D)
+                         eta_fixed = eta_fixed, D = D,
+                         save_res = save_res, save_path = save_path)
     # Shutdown cluster
     stopCluster(cluster)
     
@@ -704,7 +726,8 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                       adjust = adjust, class_cutoff = class_cutoff, 
                       n_runs = n_runs, burn = burn, thin = thin, update = update,
                       fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
-                      eta_fixed = eta_fixed, D = D)
+                      eta_fixed = eta_fixed, D = D, 
+                      save_res = save_res, save_path = save_path)
   }
   
   # Keep only the draws with K_red = K_fixed
@@ -718,6 +741,7 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
   theta_red_draws <- vector("list", length = D_red)
   c_all_draws <- matrix(NA, nrow = D_red, ncol = n)
   wts_draws <- matrix(NA, nrow = n, ncol = D_red)
+  messages_draws <- vector("list", length = D_red)  # var_adjust error messages  
   
   # Extract results for draws with okay K
   for (d in 1:D_red) {
@@ -728,8 +752,11 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
     K_red_draws[d] <- est_d$K_red
     c_all_draws[d, ] <- est_d$c_all
     pi_red_draws[[d]] <- est_d$pi_red
-    theta_red_draws[[d]] <- est_d$theta_red
+    # Convert theta to numeric array
+    theta_red_numer <- array(as.numeric(est_d$theta_red), dim = dim(est_d$theta_red))
+    theta_red_draws[[d]] <- theta_red_numer
     wts_draws[, d] <- est_d$wts
+    messages_draws[[d]] <- ifelse(is.null(est_d$message), "no error", est_d$message)
     
     # # Add dimensions if necessary
     # if (K_d < K) {
@@ -744,81 +771,116 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
     # }
   }
   
-  # Clustering to harmonize classes
-  # Cluster individuals into reduced number of classes using agglomerative clustering
-  # Calculate pairwise distance matrix using Hamming distance: proportion of
-  # iterations where two individuals have differing class assignments
-  distMat <- e1071::hamming.distance(t(c_all_draws))
-  # Hierarchical clustering dendrogram
-  dendrogram <- stats::hclust(stats::as.dist(distMat), method = "complete") 
-  # Group individuals into K classes
-  red_c_all <- stats::cutree(dendrogram, k = K)     
-  # Modify classes if any classes are less than the cutoff percentage
-  class_prop <- prop.table(table(red_c_all))
-  if (any(class_prop < class_cutoff)) {
-    # Get classes that are too small
-    small <- which(class_prop < class_cutoff)
-    # Group individuals into a larger number of classes 
-    red_c_all_temp <- stats::cutree(dendrogram, k = K + length(small))
-    red_c_all <- red_c_all_temp
-    class_prop_temp <- prop.table(table(red_c_all_temp))
-    # Get updated classes that are too small
-    small_temp <- sort(which(class_prop_temp < class_cutoff))
-    for (small_c in 1:length(small_temp)) {
-      c_ind <- small_temp[small_c]
-      class_small <- which(red_c_all_temp == c_ind)
-      # Get nearest class
-      inds <- 1:length(class_prop_temp)
-      class_dist <- sapply(inds, function(x) 
-        mean(distMat[class_small, which(red_c_all_temp == x)]))
-      # Set small class distance to Inf
-      class_dist[small_temp] <- Inf
-      nearest <- which.min(class_dist[-c_ind])
-      red_c_all[red_c_all_temp == c_ind] <- nearest
-    }
-    class_prop <- prop.table(table(red_c_all))
-  }
   
-  # Get unique reduced classes to aid relabeling
-  unique_red_classes <- unique(red_c_all)
-  
-  # For each draw, relabel new classes using the most common old class assignment
+  # Reorder the classes across draws using minimum theta distance
+  # Initialize lists across draws
   pi_red_new <- vector("list", length = D_red)
   theta_red_new <- vector("list", length = D_red)
-  for (d in 1:D_red) {
-    # Initialize pi and theta
-    pi <- matrix(NA, nrow = M, ncol = K)
-    theta <- array(NA, dim = c(M, J, K, dim(theta_red_draws[[d]])[4]))
-    
-    # Get new order
-    new_order <- numeric(K)
-    for (k in 1:K) {
-      # Individuals who were assigned to old class k
-      old_k_inds <- which(c_all_draws[d, ] == k)
-      # Most common new class assignment among those individuals
-      mode_new <- get_mode(red_c_all[old_k_inds])
-      new_order[k] <- mode_new
-      # Reorder classes for all pi and theta estimates
-      if (!is.na(mode_new)) {
-        pi[, new_order[k]] <- pi_red_draws[[d]][, k]  # reorder
-        theta[, , new_order[k], ] <- theta_red_draws[[d]][, , k, ]
-      }
+  # Set base order using draw 1
+  theta_1 <- apply(theta_red_draws[[1]], c(2, 3, 4), stats::median)
+  pi_red_new[[1]] <- pi_red_draws[[1]]
+  theta_red_new[[1]] <- theta_red_draws[[1]]
+  # Harmonize each draw to match draw 1 order
+  if (D_red > 1) {
+    for (d in 2:D_red) {
+      theta_d <- apply(theta_red_draws[[d]], c(2, 3, 4), stats::median)
+      # Minimum theta distance using mean abs distance
+      theta_perm <- get_theta_dist_wolcan(est_theta = theta_d,
+                                          true_theta = theta_1,
+                                          est_K = K, true_K = K,
+                                          subset = FALSE,
+                                          dist_type = "mean_abs")
+      theta_dist <- theta_perm$theta_dist
+      # New order
+      order <- theta_perm$order
+      # Relabel pi and theta classes for draw d using new order
+      pi_red_new[[d]] <- pi_red_draws[[d]][, order]
+      theta_red_new[[d]] <- theta_red_draws[[d]][, , order, ]
     }
-    
-    # pi <- pi_red_draws[[d]][, new_order, drop = FALSE]  # reorder
-    pi <- pi / rowSums(pi, na.rm = TRUE)
-    pi_red_new[[d]] <- pi
-    # theta <- theta_red_draws[[d]][, , new_order, , drop = FALSE]  # reorder
-    theta <- ifelse(theta < tol, tol, theta)  # prevent underflow
-    for (m in 1:dim(theta)[1]) {  # normalize
-      for (j in 1:dim(theta)[2]) {
-        for (k in 1:dim(theta)[3]) {
-          theta[m, j, k, ] <- theta[m, j, k, ] / sum(theta[m, j, k, ])
-        }
-      }
-    }
-    theta_red_new[[d]] <- theta
   }
+  
+  
+      # Clustering to harmonize classes
+      # Cluster individuals into reduced number of classes using agglomerative clustering
+      # Calculate pairwise distance matrix using Hamming distance: proportion of
+      # iterations where two individuals have differing class assignments
+      distMat <- e1071::hamming.distance(t(c_all_draws))
+      # Hierarchical clustering dendrogram
+      dendrogram <- stats::hclust(stats::as.dist(distMat), method = "complete")
+      # # Group individuals into K classes
+      # red_c_all <- stats::cutree(dendrogram, k = K)
+      # # Modify classes if any classes are less than the cutoff percentage
+      # class_prop <- prop.table(table(red_c_all))
+      # if (any(class_prop < class_cutoff)) {
+      #   # Get classes that are too small
+      #   small <- which(class_prop < class_cutoff)
+      #   # Group individuals into a larger number of classes
+      #   red_c_all_temp <- stats::cutree(dendrogram, k = K + length(small))
+      #   red_c_all <- red_c_all_temp
+      #   class_prop_temp <- prop.table(table(red_c_all_temp))
+      #   # Get updated classes that are too small
+      #   small_temp <- sort(which(class_prop_temp < class_cutoff))
+      #   for (small_c in 1:length(small_temp)) {
+      #     c_ind <- small_temp[small_c]
+      #     class_small <- which(red_c_all_temp == c_ind)
+      #     # Get nearest class
+      #     inds <- 1:length(class_prop_temp)
+      #     class_dist <- sapply(inds, function(x)
+      #       mean(distMat[class_small, which(red_c_all_temp == x)]))
+      #     # Set small class distance to Inf
+      #     class_dist[small_temp] <- Inf
+      #     nearest <- which.min(class_dist[-c_ind])
+      #     red_c_all[red_c_all_temp == c_ind] <- nearest
+      #   }
+      #   class_prop <- prop.table(table(red_c_all))
+      # }
+      # 
+      # # Get unique reduced classes to aid relabeling
+      # unique_red_classes <- unique(red_c_all)
+      # 
+      # # Relabel so that the class numbering doesn't exceed the number of classes
+      # red_c_all_old <- red_c_all
+      # for (k in 1:length(unique_red_classes)) {
+      #   red_c_all[red_c_all == unique_red_classes[k]] <- k
+      # }
+      # 
+      # # For each draw, relabel new classes using the most common old class assignment
+      # pi_red_new <- vector("list", length = D_red)
+      # theta_red_new <- vector("list", length = D_red)
+      # for (d in 1:D_red) {
+      #   # Initialize pi and theta
+      #   pi <- matrix(NA, nrow = M, ncol = K)
+      #   theta <- array(NA, dim = c(M, J, K, dim(theta_red_draws[[d]])[4]))
+      # 
+      #   # Get new order
+      #   new_order <- numeric(K)
+      #   for (k in 1:K) {
+      #     # Individuals who were assigned to old class k
+      #     old_k_inds <- which(c_all_draws[d, ] == k)
+      #     # Most common new class assignment among those individuals
+      #     mode_new <- get_mode(red_c_all[old_k_inds])
+      #     new_order[k] <- mode_new
+      #     # Reorder classes for all pi and theta estimates
+      #     if (!is.na(mode_new)) {
+      #       pi[, new_order[k]] <- pi_red_draws[[d]][, k]  # reorder
+      #       theta[, , new_order[k], ] <- theta_red_draws[[d]][, , k, ]
+      #     }
+      #   }
+      # 
+      #   # pi <- pi_red_draws[[d]][, new_order, drop = FALSE]  # reorder
+      #   pi <- pi / rowSums(pi, na.rm = TRUE)
+      #   pi_red_new[[d]] <- pi
+      #   # theta <- theta_red_draws[[d]][, , new_order, , drop = FALSE]  # reorder
+      #   theta <- ifelse(theta < tol, tol, theta)  # prevent underflow
+      #   for (m in 1:dim(theta)[1]) {  # normalize
+      #     for (j in 1:dim(theta)[2]) {
+      #       for (k in 1:dim(theta)[3]) {
+      #         theta[m, j, k, ] <- theta[m, j, k, ] / sum(theta[m, j, k, ])
+      #       }
+      #     }
+      #   }
+      #   theta_red_new[[d]] <- theta
+      # }
   
   # Stack together the draws
   pi_red_stack <- do.call("abind", c(pi_red_new, along = 1))
@@ -894,7 +956,7 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                          pi_med = pi_med, theta_med = theta_med, 
                          c_all = c_all, pred_class_probs = pred_class_probs,
                          dendrogram = dendrogram, wts_draws = wts_draws, 
-                         K_red = K_red, K = K)
+                         K_red = K_red, K = K, messages_draws = messages_draws)
   return(comb_estimates)
 }
 
@@ -906,7 +968,8 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
 #   adjust: Boolean indicating if post-processing variance adjustment should be applied
 # inherit parameters from get_var_dir
 wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn, 
-                    thin, update, fixed_seed, alpha_fixed, eta_fixed, D) {
+                    thin, update, fixed_seed, alpha_fixed, eta_fixed, D, 
+                    save_res, save_path) {
   
   # # Source Rcpp functions from baysc package
   # Rcpp::sourceCpp(rcpp_path)
@@ -936,10 +999,21 @@ wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn,
                         thin = thin, update = update, save_res = FALSE)
   # Apply post-processing variance adjustment for pseudo-likelihood if desired
   if (adjust) {
-    res_d <- baysc::wolca_var_adjust(res = res_d, num_reps = 100, save_res = FALSE, 
-                              adjust_seed = fixed_seed)
-    # Get estimates
-    est_d <- res_d$estimates_adjust
+    try_d <- tryCatch(baysc::wolca_var_adjust(res = res_d, num_reps = 100, 
+                                              save_res = FALSE, 
+                                              adjust_seed = fixed_seed), 
+                      error = function(e) e)
+    if (is.null(try_d$message)) {  # variance adjustment worked
+      res_d <- try_d
+      # Get estimates
+      est_d <- res_d$estimates_adjust
+    } else {  # variance adjustment failed
+      # Get estimates
+      est_d <- res_d$estimates
+      est_d$message <- try_d$message
+    }
+     
+    # Get number of classes
     est_d$K_red <- res_d$estimates$K_red
   } else {
     # Get estimates
@@ -947,6 +1021,11 @@ wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn,
   }
   # Return the sampled weights
   est_d$wts <- wts_d
+  
+  # Save output
+  if (save_res) {
+    save(est_d, file = paste0(save_path, "draw_", d, "_results.RData"))
+  }
   
   return(est_d)
 }
@@ -1004,6 +1083,8 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
       # Restrict to [0, 1]
       hat_pi_B_dist[m, ] <- sapply(1:n1, function(x) max(min(pi_B_m[x], 1), 0))
     }
+    # Add BART model to output
+    est_weights$fit_pi_B <- fit_pi_B
     
   # If pi_R not known for all, predict pi_R for those in S_B 
   } else {
@@ -1053,6 +1134,9 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
       
       # Add estimated hat_pi_R distribution to output list
       est_weights$hat_pi_R_dist <- hat_pi_R_dist
+      # Add BART model to output
+      est_weights$fit_pi_R <- fit_pi_R
+      est_weights$fit_pi_B <- fit_pi_B
       
     } else if (pred_model == "glm") {
       
@@ -1060,7 +1144,7 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
       # Add logit(pi_R) to data for those in S_R
       glm_data <- cbind(samp_comb[z==0, , drop = FALSE], logit_pi_R)
       form_R <- as.formula(paste0("logit_pi_R ~ ", 
-                                   paste0(pred_covs_B, collapse = " + ")))
+                                   paste0(pred_covs_R, collapse = " + ")))
       fit_pi_R <- lm(form_R, data = glm_data)
             # fit_pi_R <- lm(form_R, data = samp_comb[z == 0, pred_covs_R, drop = FALSE])
       hat_logit_pi_R <- predict(fit_pi_R, newdata = samp_comb[z == 1, pred_covs_R, 
@@ -1081,6 +1165,10 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
         (frame_B * (1 - hat_pi_z[z == 1]))
       # Distribution of hat_pi_B set to mean
       hat_pi_B_dist <- hat_pi_B
+      
+      # Add model to output
+      est_weights$fit_pi_R <- fit_pi_R
+      est_weights$fit_pi_B <- fit_pi_B
     } else {
       stop("pred_model must be one of `'bart'` or `'glm'`")
     }
@@ -1162,3 +1250,16 @@ trim_w <- function(w, m='t1', c=10, max=Inf){
   w	
 }
 
+
+#' Get mode
+#' 
+#' `get_mode` is a helper function that obtains the modal value given an input 
+#' vector.
+#' @param v Input vector
+#' @return Outputs most common value found in input vector `v`
+#' @keywords internal
+#' @export
+get_mode <- function(v) {
+  uniqv <- unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
