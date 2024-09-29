@@ -28,7 +28,7 @@ options(mc.cores = parallel::detectCores())
 
 # Directories
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
-# wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
+wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
 data_dir <- "Application/Cleaned_Data/"  # Data directory
 res_dir <- "Application/Results/"        # Results directory
 code_dir <- "Application/Code/"  # Code directory
@@ -36,6 +36,7 @@ code_dir <- "Application/Code/"  # Code directory
 # Source R model functions
 source(paste0(wd, "Model_Code/", "model_functions.R"))
 source(paste0(wd, "Summary_Code/", "summary_functions.R"))
+source(paste0(wd, code_dir, "app_functions.R"))
 
 #==================== Read in and prepare data =================================
 # Read in PRCS data
@@ -81,21 +82,7 @@ item_labels <- colnames(prospect_dbh)[-1]
 class_title <- "Dietary Behavior Pattern"
 categ_title <- "Risk Level"
 categ_labels <- c("Low", "Med", "High")
-# Display plots of results
-res_plots <- function(res) {
-  print(baysc::plot_pattern_profiles(res, item_labels = item_labels, 
-                                     class_title = class_title, 
-                                     categ_title = categ_title,
-                                     categ_labels = categ_labels))
-  print(baysc::plot_pattern_probs(res, item_labels = item_labels, 
-                                  class_title = class_title, 
-                                  categ_title = categ_title,
-                                  categ_labels = categ_labels))
-  print(baysc::plot_class_dist(res))
-  # Traceplot for pi
-  plot(res$estimates_adjust$pi_red[, 1], type = "l", ylim = c(0, 1))
-  hist(res$data_vars$sampling_wt, breaks = 30)
-}
+
 
 cov_df <- restrict_data %>%
   select(Sex, Educ, Age, Inc_hh, Urban, Ethnicity, Smoking_status, 
@@ -553,17 +540,7 @@ summary(glm(high_cholesterol ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban,
             data = regr_dat, family = binomial()))
 
 
-### Survey-weighted logistic regression
-wtd_logreg <- function(res, data, formula_y) {
-  svy_data <- data.frame(dbh_class = as.factor(res$estimates_adjust$c_all),
-                         restrict_data, 
-                         wts = res$data_vars$sampling_wt)
-  svy_des <- survey::svydesign(ids = ~1, weights = ~wts, data = svy_data)
-  log_reg <- survey::svyglm(formula = as.formula(formula_y), 
-                            design = svy_des, 
-                            family = stats::quasibinomial(link = "logit"))
-  return(summary(log_reg))
-}
+
 wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data, 
            formula_y = "hypertension ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban")
 wtd_logreg(res = res_cc_dbh, data = restrict_data, 
@@ -762,6 +739,8 @@ dim(fit23$model)
 
 
 #========== Run regression models using csSampling package =====================
+load(paste0(wd, res_dir, "cc_dbh_wolcan_results.RData"))
+
 # Create survey data using estimated dietary pattern assignments
 svy_data <- data.frame(dbh_class = as.factor(res$estimates_adjust$c_all),
                        restrict_data, 
@@ -773,144 +752,24 @@ svy_data <- svy_data %>%
          t2d_categ = as.factor(ifelse(t2d_categ == 4, 3, t2d_categ)),
          chol_categ = as.factor(ifelse(chol_categ == 4, 3, chol_categ)))
 
-# Restrict to those not at risk or at risk and unaware (dbh -> disease)
-# T2D: n=1446
-svy_data_unaware_t2d <- svy_data %>%
-  filter(t2d_categ != 3) %>%
-  drop_na(diabetes, Age, Sex, Educ, Inc_hh, Urban, Physical_activity, 
-          Smoking_status, Food_security)
-svy_des_unaware_t2d <- survey::svydesign(ids = ~1, weights = ~wts, 
-                                         data = svy_data_unaware_t2d)
-model_formula <- as.formula(paste0("diabetes | weights(wts) ~ dbh_class ",
-                                   "+ Age + Sex + Educ+ Inc_hh + Urban",
-                                   " + Physical_activity + Smoking_status ",
-                                   "+ Food_security")) 
-brms_mod <- brms::brmsformula(model_formula, center = TRUE)
-set.seed(1)
-fit_htn_risk <- csSampling::cs_sampling_brms(svydes = svy_des_unaware_t2d, 
-                                             brmsmod = brms_mod, 
-                                              data = svy_data_unaware_t2d, 
-                                              family = bernoulli(link = "logit"),
-                                             ctrl_stan = 
-                                               list(chains = 3, iter = 2000, 
-                                                    warmup = 1000, thin = 5))
-plot(fit_htn_risk)
-temp <- summary(fit_htn_risk$stan_fit, probs = c(0.025, 0.975))
-round(temp$summary, 3)
-
-
-
+# Get weights posterior draws
 wts_draws <- res$estimates_adjust$wts_draws
-D <- ncol(wts_draws)
-adj_parms_draws <- list()
-sampled_parms_draws <- list()
-stan_fit_draws <- list()
-for (d in 1:D) {
-  set.seed(d)
-  svy_data_d <- svy_data %>%
-    mutate(wts_d = wts_draws[, d])
-  svy_data_unaware_t2d_d <- svy_data_d %>%
-    filter(t2d_categ != 3) %>%
-    drop_na(diabetes, Age, Sex, Educ, Inc_hh, Urban, Physical_activity, 
-            Smoking_status, Food_security)
-  svy_des_unaware_t2d_d <- survey::svydesign(ids = ~1, weights = ~wts_d, 
-                                           data = svy_data_unaware_t2d_d)
-  fit_d <- csSampling::cs_sampling_brms(svydes = svy_des_unaware_t2d_d, 
-                                        brmsmod = brms_mod, 
-                                        data = svy_data_unaware_t2d_d, 
-                                        family = bernoulli(link = "logit"),
-                                        ctrl_stan = list(chains = 3, iter = 2000, 
-                                                         warmup = 1000, thin = 5))
-  sampled_parms_draws[[d]] <- fit_d$sampled_parms
-  adj_parms_draws[[d]] <- fit_d$adjusted_parms
-  stan_fit_draws[[d]] <- fit_d$stan_fit
-}
+wts_draws[1:5, 1:5]
 
-# Function to run weighted logistic regression, incorporating variability from 
-# estimated weights
-# Inputs:
-#   wts_draws: nxD matrix of the D draws from the weights posterior distribution
-#   subset: String specifying whether to subset to those unaware ("unaware") to 
-# measure impact of diet behavior pattern on disease, or to subset to those with 
-# the disease ("disease") to measure impact of diagnosis on diet behavior. Must 
-# be one of "unaware" or "disease".
-#   condition: String specifying the condition to focus on. Must be one of "htn"
-# (hypertension), "t2d" (type 2 diabetes), or "chol" (high cholesterol)
-# Add variability of the weights
-wtd_logreg_wolcan <- function(wts_draws, subset, condition, save_res = TRUE,
-                              save_path) {
-  # Check input arguments
-  if (subset == "unaware") {
-    filter_categ <- 3
-  } else if (subset == "disease") {
-    filter_categ <- 1
-  } else {
-    stop("Input argument 'subset' must be one of 'unaware' or 'disease'")
-  }
-  
-  if (condition == "htn") {
-    cond_categ <- "htn_categ"
-    cond <- "hypertension"
-  } else if (condition == "t2d") {
-    cond_categ <- "t2d_categ"
-    cond <- "diabetes"
-  } else if (condition == "chol") {
-    cond_categ <- "chol_categ"
-    cond <- "cholesterol"
-  } else {
-    stop("Input argument 'condition' must be one of 'htn', 't2d', or 'chol'")
-  }
-  
-  # Number of draws
-  D <- ncol(wts_draws)  
-  # Initialize lists
-  adj_parms_draws <- list()
-  sampled_parms_draws <- list()
-  stan_fit_draws <- list()
-  
-  # Define brms formula
-  model_formula <- as.formula(paste0(cond, " | weights(wts_d) ~ dbh_class ",
-                                     "+ Age + Sex + Educ+ Inc_hh + Urban",
-                                     " + Physical_activity + Smoking_status ",
-                                     "+ Food_security")) 
-  brms_mod <- brms::brmsformula(model_formula, center = TRUE)
-  
-  # For each draw, run the variance-adjusted survey-weighted regression and 
-  # store results
-  for (d in 1:D) {
-    print("d: ", d)
-    set.seed(d)
-    svy_data_d <- svy_data %>%
-      mutate(wts_d = wts_draws[, d])
-    svy_data_subset_d <- svy_data_d %>%
-      filter(cond_categ != filter_categ) %>% 
-      drop_na(cond, Age, Sex, Educ, Inc_hh, Urban, Physical_activity, 
-              Smoking_status, Food_security)
-    svy_des_subset_d <- survey::svydesign(ids = ~1, weights = ~wts_d,
-                                          data = svy_data_subset_d)
-    fit_d <- csSampling::cs_sampling_brms(svydes = svy_des_subset_d, 
-                                          brmsmod = brms_mod, 
-                                          data = svy_data_subset_d, 
-                                          family = bernoulli(link = "logit"),
-                                          ctrl_stan = list(chains = 3, iter = 2000, 
-                                                           warmup = 1000, thin = 5))
-    sampled_parms_draws[[d]] <- fit_d$sampled_parms
-    adj_parms_draws[[d]] <- fit_d$adjusted_parms
-    stan_fit_draws[[d]] <- fit_d$stan_fit
-  }
-  
-  all_adj_parms <- as.data.frame(do.call(rbind, adj_parms_draws))
-  
-  if (save_res) {
-    wtd_logreg_res <- list(all_adj_parms = all_adj_parms, 
-                           sampled_parms_draws = sampled_parms_draws,
-                           stan_fit_draws = stan_fit_draws)
-    save(wtd_logreg_res, file = paste0(save_path, "logreg.RData"))
-  }
-}
+# Test: d = 1
+wts_draws <- as.matrix(res$estimates_adjust$wts_draws[, 1])
+test1 <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                           condition = "t2d", save = FALSE,
+                           save_path = paste0(wd, res_dir, "t2d_unaware"))
+
+# Test: d = 2
+wts_draws <- as.matrix(res$estimates_adjust$wts_draws[, 2])
+test2 <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                           condition = "t2d", save = FALSE,
+                           save_path = paste0(wd, res_dir, "t2d_unaware"))
 
 fit_t2d_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
-                                     condition = "t2d", 
+                                     condition = "t2d", save = FALSE,
                                      save_path = paste0(wd, res_dir, "t2d_unaware"))
 fit_htn_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
                                      condition = "htn", 
@@ -929,6 +788,32 @@ fit_chol_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease",
                                       condition = "chol", 
                                       save_path = paste0(wd, res_dir, "chol_disease"))
 
+
+
+# Restrict to those not at risk or at risk and unaware (dbh -> disease)
+# T2D: n=1446
+svy_data_unaware_t2d <- svy_data %>%
+  filter(t2d_categ != 3) %>%
+  drop_na(diabetes, Age, Sex, Educ, Inc_hh, Urban, Physical_activity, 
+          Smoking_status, Food_security)
+svy_des_unaware_t2d <- survey::svydesign(ids = ~1, weights = ~wts, 
+                                         data = svy_data_unaware_t2d)
+model_formula <- as.formula(paste0("diabetes | weights(wts) ~ dbh_class ",
+                                   "+ Age + Sex + Educ+ Inc_hh + Urban",
+                                   " + Physical_activity + Smoking_status ",
+                                   "+ Food_security")) 
+brms_mod <- brms::brmsformula(model_formula, center = TRUE)
+set.seed(1)
+fit_htn_risk <- csSampling::cs_sampling_brms(svydes = svy_des_unaware_t2d, 
+                                             brmsmod = brms_mod, 
+                                             data = svy_data_unaware_t2d, 
+                                             family = bernoulli(link = "logit"),
+                                             ctrl_stan = 
+                                               list(chains = 3, iter = 2000, 
+                                                    warmup = 1000, thin = 5))
+plot(fit_htn_risk)
+temp <- summary(fit_htn_risk$stan_fit, probs = c(0.025, 0.975))
+round(temp$summary, 3)
 
 all_adj_parms <- as.data.frame(do.call(rbind, adj_parms_draws))
 summary_adj_parms <- t(apply(all_adj_parms, 2, function(x) c(mean(x, na.rm = TRUE), 

@@ -69,11 +69,11 @@ dist_type = "mean_abs"
 samp_i_seq <- 1:100
 #scenarios <- c(0, 6:10, 15, 18:19)
 scenarios <- 0  # where model results are
-scenarios_data <- 17  # where data is
+scenarios_data <- 16  # where data is
 model <- "wolcan"
-save <- TRUE
+save <- FALSE
 subset <- TRUE
-informative <- TRUE
+informative <- FALSE
 
 xi_bias_all <- xi_var_all <- xi_cover_all <- matrix(NA, nrow = length(scenarios), 
                                                     ncol = length(samp_i_seq))
@@ -88,11 +88,11 @@ for (i in 1:length(scenarios)) {
   true_K <- length(true_params$true_pi)
   
   # True parameters
-  pop <- data.frame(c_all = sim_pop$c_all, sim_pop$pop, y_all = sim_pop$Y_data)
-  pop_logreg <- glm(as.formula(formula_y), data = pop, 
-                                family = binomial(link = "logit"))
-  xi_vec_y <- pop_logreg$coefficients
-  # xi_vec_y <- sim_pop$true_xi
+  # pop <- data.frame(c_all = sim_pop$c_all, sim_pop$pop, y_all = sim_pop$Y_data)
+  # pop_logreg <- glm(as.formula(formula_y), data = pop, 
+  #                               family = binomial(link = "logit"))
+  # xi_vec_y <- pop_logreg$coefficients
+  xi_vec_y <- sim_pop$true_xi
   
   # Get bias, variance, and coverage for each sample
   for (j in 1:length(samp_i_seq)) {
@@ -144,11 +144,13 @@ for (i in 1:length(scenarios)) {
         } else if (model == "wolca") {
           # res$estimates$c_all <- sim_samp_B$c_all
         }
-        # Use true c_all
-        true_c_all <- sim_samp_B$c_all
       }
+      
+      # Use true c_all
+      true_c_all <- sim_samp_B$c_all
     
-      y_metrics_i <- get_y_metrics_i(res = res, true_params = true_params, 
+      y_metrics_i <- get_y_metrics_i(res = res, true_xi = sim_pop$true_xi, 
+                                     true_params = true_params, 
                                      true_K = true_K, model = model,
                                      dist_type = dist_type, sim_samp_B = sim_samp_B, 
                                      subset = subset, method = "svyglm", 
@@ -180,8 +182,8 @@ rowMeans(xi_cover_all, na.rm = TRUE)
 summary_all <- list(xi_bias_all = xi_bias_all, 
                     xi_var_all = xi_var_all,
                     xi_cover_all = xi_cover_all)
-save(summary_all, file = paste0(wd, sum_dir, "summary_y_", model, 
-                                "_all_scens.RData"))
+# save(summary_all, file = paste0(wd, sum_dir, "summary_y_", model, 
+#                                 "_all_scens.RData"))
 
 
 

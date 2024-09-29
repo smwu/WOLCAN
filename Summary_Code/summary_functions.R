@@ -450,7 +450,7 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
 
 # Function to get y outcome model performance metrics for one iteration
 # subset: Subset to the minimum number of classes
-get_y_metrics_i <- function(res, true_params, true_K, dist_type, 
+get_y_metrics_i <- function(res, true_xi, true_params, true_K, dist_type, 
                             sim_samp_B, model, subset = FALSE, 
                             method = c("svyglm", "bayes"),
                             true_c_all = NULL) {
@@ -529,14 +529,14 @@ get_y_metrics_i <- function(res, true_params, true_K, dist_type,
     xi_est <- c(xi_est[1:(true_K - missing)], rep(0, times = missing), 
                 xi_est[-c(1:(true_K - missing))], rep(0, times = missing))
   } else if (extra > 0) {
-    xi_vec_y <- c(xi_vec_y[1:true_K], rep(0, times = extra), 
-                  xi_vec_y[-c(1:true_K)], rep(0, times = extra))
+    true_xi <- c(true_xi[1:true_K], rep(0, times = extra), 
+                  true_xi[-c(1:true_K)], rep(0, times = extra))
   }
   
   
   ### Summary metrics
-  # Calculate bias
-  xi_dist <- get_dist_wolcan(par1 = xi_est, par2 = xi_vec_y, 
+  # Calculate bias, subsetting to only the main effects of c_all
+  xi_dist <- get_dist_wolcan(par1 = xi_est[1:length(true_xi)], par2 = true_xi, 
                              dist_type = dist_type)
   
   # Calculate variance
@@ -546,7 +546,7 @@ get_y_metrics_i <- function(res, true_params, true_K, dist_type,
   
   
   # Calculate coverage
-  xi_cover <- ifelse((xi_vec_y >= xi_CI[, 1]) & (xi_vec_y <= xi_CI[, 2]), 
+  xi_cover <- ifelse((true_xi >= xi_CI[, 1]) & (true_xi <= xi_CI[, 2]), 
                      1, 0)
   xi_cover_mean <- mean(xi_cover)
   
