@@ -26,31 +26,30 @@ dim(prcs_p)
 # Read in PRCS household-level data
 prcs_h <- read.csv(paste0(wd, data_dir, "prcs_psam_h72.csv"))
 dim(prcs_h)
-# Read in metropolitan areas
-metro <- read_xlsx(paste0(wd, data_dir, "prcs_MSA2013_PUMA2020_crosswalk.xlsx"))
-# Restrict to PR and convert metro PUMA code to numeric
-metro <- metro %>% 
-  filter(`State Name` == "Puerto Rico") %>%
-  mutate(PUMA20 = as.numeric(`PUMA Code`))
+  # # Read in metropolitan areas
+  # metro <- read_xlsx(paste0(wd, data_dir, "prcs_MSA2013_PUMA2020_crosswalk.xlsx"))
+  # # Restrict to PR and convert metro PUMA code to numeric
+  # metro <- metro %>% 
+  #   filter(`State Name` == "Puerto Rico") %>%
+  #   mutate(PUMA20 = as.numeric(`PUMA Code`))
 
-
-### Merge in metropolitan area information
-# Check no missing 2020 PUMAs other than group quarters (-9)
-setdiff(unique(prcs_h$PUMA20), unique(metro$PUMA20))
-# Merge in metro area info
-prcs_metro <- prcs_h %>%
-  left_join(metro, by = join_by(PUMA20), relationship = "many-to-one",
-            multiple = "first")  # set this to match PUMA 700 with MSA 25020
-# How many PUMAs are MSAs: around 22%
-mean(!is.na(prcs_metro$`MSA Code`))
-# Create urban variable: 0 = rural, 1 = urban
-prcs_metro <- prcs_metro %>%
-  mutate(Urban = factor(ifelse(is.na(`MSA Code`), 0, 1), levels = c(1, 0)))
+  # ### Merge in metropolitan area information
+  # # Check no missing 2020 PUMAs other than group quarters (-9)
+  # setdiff(unique(prcs_h$PUMA20), unique(metro$PUMA20))
+  # # Merge in metro area info
+  # prcs_metro <- prcs_h %>%
+  #   left_join(metro, by = join_by(PUMA20), relationship = "many-to-one",
+  #             multiple = "first")  # set this to match PUMA 700 with MSA 25020
+  # # How many PUMAs are MSAs: around 22%
+  # mean(!is.na(prcs_metro$`MSA Code`))
+  # # Create urban variable: 0 = rural, 1 = urban
+  # prcs_metro <- prcs_metro %>%
+  #   mutate(Urban = factor(ifelse(is.na(`MSA Code`), 0, 1), levels = c(1, 0)))
 
 ### Obtain variables to be used to model selection
 # Age, sex, education, individual income, weights
 prcs_vars <- prcs_p %>%
-  select(SERIALNO, SPORDER, AGEP, SEX, SCHL, PINCP, PWGTP) %>%
+  select(SERIALNO, SPORDER, AGEP, SEX, SCHL, HISP, PINCP, PWGTP) %>%
   mutate(
     Sex = factor(SEX - 1, levels = c(0, 1)),  # M, F 
     Educ = factor(case_when(
@@ -58,7 +57,10 @@ prcs_vars <- prcs_p %>%
       SCHL %in% c(12, 13, 14, 15, 16, 17) ~ 2, # "9th grade to GED", 
       SCHL %in% c(18, 19, 20, 21) ~ 3, #"some college or bachelors",
       SCHL %in% c(22, 23, 24) ~ 4, #"graduate degree", 
-      .default = SCHL))) %>%
+      .default = SCHL)),
+    Ethnicity = factor(case_when(
+      HISP == 3 ~ 0,  # Puerto Rican,
+      .default = 1))) %>%  # Other (no)
   rename(
     Age = AGEP,
     Income_indiv = PINCP,
@@ -77,13 +79,13 @@ prcs_h <- prcs_h %>%
 prcs_vars <- prcs_vars %>%
   left_join(prcs_h %>% select(SERIALNO, Inc_hh), 
             by = join_by(SERIALNO))
-### Add in urban variable
-prcs_vars <- prcs_vars %>% 
-  left_join(prcs_metro %>% select(SERIALNO, Urban),
-            by = join_by(SERIALNO))
+  # ### Add in urban variable
+  # prcs_vars <- prcs_vars %>% 
+  #   left_join(prcs_metro %>% select(SERIALNO, Urban),
+  #             by = join_by(SERIALNO))
 # Reorder variables 
 prcs_cleaned <- prcs_vars %>% select(SERIALNO, SPORDER, Weight, Age, Sex, Educ, 
-                                     Inc_hh, Urban, Income_indiv)
+                                     Inc_hh, Ethnicity, Income_indiv)
 # Drop na
 prcs_drop_na <- prcs_cleaned %>% drop_na()
 

@@ -110,10 +110,6 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
                                     hat_pi_R = hat_pi_R,
                                     frame_B = frame_B, frame_R = frame_R,
                                     trim_method = trim_method, trim_c = trim_c)
-    # Save weights
-    if (save_res) {
-      save(est_weights, file = paste0(save_path, "_wolcan_weights.RData"))
-    }
   } 
   
   # Mean estimated weights
@@ -122,7 +118,20 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
   wts_post <- est_weights$wts_post
   
   #================ Run WOLCA model with mean weights ==========================
-  if (!weights_only) {
+  if (weights_only) {
+
+    # Stop runtime tracker
+    runtime <- Sys.time() - start_time
+    est_weights$runtime <- runtime
+    
+    # Save weights
+    if (save_res & overwrite) {
+      save(est_weights, file = paste0(save_path, "_wolcan_weights.RData"))
+    }
+    
+    return(est_weights)
+    
+  } else {
     if (run_adapt) {
       # Load adaptive results if they already exist
       if (file.exists(paste0(save_path, "_wolcan_adapt.RData")) & !overwrite) {
@@ -248,31 +257,29 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
         print("Not accounting for weights uncertainty...")
       }
     }
+    #================= Save and return output ==================================
+    # Stop runtime tracker
+    runtime <- Sys.time() - start_time
+    res$runtime <- runtime
+    
+    # # Store estimated pseudo-weights
+    # res$est_weights <- est_weights
+    
+    # Store additional data variables used for estimating pseudo-weights
+    res$data_vars <- c(res$data_vars, list(dat_B = dat_B, dat_R = dat_R, 
+                                           pred_covs_B = pred_covs_B, 
+                                           pred_covs_R = pred_covs_R, pi_R = pi_R))
+    
+    class(res) <- "wolca"
+    
+    # Save output
+    if (save_res) {
+      save(res, file = paste0(save_path, "_wolcan_results.RData"))
+    }
+    
+    return(res)
   }
-  
-  #================= Save and return output ====================================
-  # Stop runtime tracker
-  runtime <- Sys.time() - start_time
-  res$runtime <- runtime
-  
-  # # Store estimated pseudo-weights
-  # res$est_weights <- est_weights
-  
-  # Store additional data variables used for estimating pseudo-weights
-  res$data_vars <- c(res$data_vars, list(dat_B = dat_B, dat_R = dat_R, 
-                                         pred_covs_B = pred_covs_B, 
-                                         pred_covs_R = pred_covs_R, pi_R = pi_R))
-  
-  class(res) <- "wolca"
-  
-  # Save output
-  if (save_res) {
-    save(res, file = paste0(save_path, "_wolcan_results.RData"))
-  }
-  
-  return(res)
-  
-}
+} 
 
 # Only use the mean posterior weights
 # wts: mean weights

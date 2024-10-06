@@ -28,7 +28,7 @@ options(mc.cores = parallel::detectCores())
 
 # Directories
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
-wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
+# wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
 data_dir <- "Application/Cleaned_Data/"  # Data directory
 res_dir <- "Application/Results/"        # Results directory
 code_dir <- "Application/Code/"  # Code directory
@@ -82,8 +82,6 @@ item_labels <- colnames(prospect_dbh)[-1]
 class_title <- "Dietary Behavior Pattern"
 categ_title <- "Risk Level"
 categ_labels <- c("Low", "Med", "High")
-
-
 cov_df <- restrict_data %>%
   select(Sex, Educ, Age, Inc_hh, Urban, Ethnicity, Smoking_status, 
          Drinking_status, Food_security, WIC_SNAP, Social_support, 
@@ -107,15 +105,16 @@ corrplot.mixed(cor, number.cex = 0.8, tl.cex = 1.1,
 ### Define data and parameters
 # Estimating pseudo-weights
 x_mat <- as.matrix(prospect_dbh_drop_na[, -1])  # Multivariate categorical variables
-selection_covs <- c("Sex", "Educ", "Age", "Inc_hh", "Urban")
+selection_covs <- c("Sex", "Educ", "Age", "Inc_hh", "Ethnicity")
+# selection_covs <- c("Sex", "Educ", "Age", "Inc_hh", "Urban")
 dat_B <- restrict_data %>%  # Covariates for NPS
   select(all_of(selection_covs)) %>%
-  mutate_at(c("Sex", "Educ", "Inc_hh", "Urban"), as.factor)
+  mutate_at(c("Sex", "Educ", "Inc_hh", "Ethnicity"), as.factor)
 nrow(dat_B %>% drop_na()) # 414 dropped
 dat_R <- prcs_cleaned %>%  # Covariates for reference
   select(all_of(selection_covs)) %>%
   # mutate(Age = Age - mean(Age, na.rm = TRUE)) %>% # Center Age
-  mutate_at(c("Sex", "Educ", "Inc_hh", "Urban"), as.factor)
+  mutate_at(c("Sex", "Educ", "Inc_hh", "Ethnicity"), as.factor)
 nrow(dat_R %>% drop_na()) # 6185 dropped
 pred_model <- "bart"  # Prediction model for selection
 pred_covs_B <- selection_covs  # Covariates to predict NPS selection
@@ -168,8 +167,7 @@ res <- wolcan(x_mat = x_mat, dat_B = dat_B, dat_R = dat_R,
               fixed_seed = fixed_seed, class_cutoff = class_cutoff, 
               n_runs = n_runs, burn = burn, thin = thin, update = update, 
               save_res = save_res, save_path = save_path, 
-              overwrite = TRUE)
-class(res) <- "wolca"
+              overwrite = FALSE, weights_only = FALSE)
 
 baysc::plot_pattern_profiles(res)
 baysc::plot_pattern_probs(res)
@@ -530,7 +528,8 @@ table(num_disease, useNA = "always")
 regr_dat <- as.data.frame(cbind(
   restrict_data, 
   dbh_class = factor(res_unwt$estimates$c_all)))
-summary(glm(hypertension ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban, 
+summary(glm(hypertension ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban + 
+            Physical_activity + Smoking_status + Food_security, 
             data = regr_dat, family = binomial()))
 
 summary(glm(diabetes ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban, 
@@ -560,6 +559,88 @@ wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data,
            formula_y = "high_cholesterol ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban")
 wtd_logreg(res = res_cc_dbh, data = restrict_data, 
            formula_y = "high_cholesterol ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban")
+
+restrict_data2 <- restrict_data %>%
+  mutate(Sex = factor(Sex, levels = c(1, 0), labels = c("Female", "Male")),
+         Educ = factor(Educ, levels = c(4,3,2,1), 
+                       labels = c("Graduate", "College", "HS", "<HS")),
+         Inc_hh = factor(Inc_hh, levels = c(3,2,1),
+                         labels = c(">20k", "10-20k", "0-10k")),
+         Ethnicity = factor(Ethnicity, levels = c(0, 1), 
+                            labels = c("PR", "Other")),
+         Urban = factor(Urban, levels = c(1, 0), 
+                        labels = c("Urban", "Rural")),
+         Smoking_status = factor(Smoking_status, levels = c(0,1,2),
+                                 labels = c("Never", "Former", "Current")),
+         Drinking_status = factor(Drinking_status, levels = c(0,1,2),
+                                  labels = c("Never", "Former", "Current")),
+         Physical_activity = factor(Physical_activity, levels = c(2,1,0),
+                                    labels = c("Moderate", "Light", "Sedentary")),
+         Food_security = factor(Food_security, levels = c(1, 0), 
+                                labels = c("Secure", "Insecure")),
+         WIC_SNAP = factor(WIC_SNAP, levels = c(0, 1),
+                           labels = c("No", "Yes")),
+         Depression = factor(Depression, levels = c(0,1), 
+                             labels = c("None/Mild", "Moderate/Severe")),
+         Anxiety = factor(Anxiety, levels = c(0,1),
+                          labels = c("None/Mild", "Moderate/Severe")))
+# Full, no interactions, all individuals
+fit1 <- wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data2,
+           filter_inds = 1:nrow(restrict_data2),
+           formula_y = paste0("diabetes ~ dbh_class + Age + Sex + Educ + Inc_hh ",
+           "+ Ethnicity + Urban + Physical_activity + Smoking_status ",
+           "+ Drinking_status + Food_security + WIC_SNAP + Depression + Anxiety"))
+fit2 <- wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data2,
+                   filter_inds = 1:nrow(restrict_data2),
+                   formula_y = paste0("diabetes ~ dbh_class * (Age + Sex + Educ + Inc_hh ",
+                                      "+ Ethnicity + Urban + Physical_activity + Smoking_status ",
+                                      "+ Drinking_status + Food_security + WIC_SNAP + Depression + Anxiety)",
+                                      "+ hypertension + high_cholesterol"))
+summary(fit2)
+
+# Full, no interactions, unaware individuals
+fit3 <- wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data2,
+           filter_inds = which(restrict_data2$t2d_aware != 1),
+           formula_y = paste0("diabetes ~ dbh_class + Age + Sex + Educ + Inc_hh ",
+                              "+ Ethnicity + Urban + Physical_activity + Smoking_status ",
+                              "+ Drinking_status + Food_security + WIC_SNAP + Depression + Anxiety"))
+summary(fit3)
+
+# Full, with interactions, unaware individuals
+fit4 <- wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data2,
+           filter_inds = which(restrict_data2$t2d_aware != 1),
+           formula_y = paste0("diabetes ~ dbh_class * (Age + Sex + Educ + Inc_hh ",
+                              "+ Ethnicity + Urban + Physical_activity + Smoking_status ",
+                              "+ Drinking_status + Food_security + WIC_SNAP + Depression + Anxiety)",
+                              "+ hypertension + high_cholesterol"))
+summary(fit4)
+anova(fit3, fit4) # p < 0.002
+
+fit_f <- wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data2,
+                    filter_inds = which(restrict_data2$t2d_aware != 1 & 
+                                          restrict_data2$Sex == "Female"),
+                    formula_y = paste0("diabetes ~ dbh_class + Age + Educ + Inc_hh ",
+                                       "+ Ethnicity + Urban + Physical_activity + Smoking_status ",
+                                       "+ Drinking_status + Food_security + WIC_SNAP + Depression + Anxiety",
+                                       "+ hypertension + high_cholesterol"))
+fit_f <- wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data2,
+                    filter_inds = which(restrict_data2$t2d_aware != 1 & 
+                                          restrict_data2$Sex == "Female"),
+                    formula_y = paste0("diabetes ~ dbh_class * ",
+                    "(Age + Physical_activity + Smoking_status + Drinking_status + Food_security",
+                    "+ Ethnicity + Urban + Perceived_stress)",
+                       " + Educ + Inc_hh + WIC_SNAP + Depression + Anxiety",
+                       "+ hypertension + high_cholesterol"))
+fit_m <- wtd_logreg(res = res_no_varadj_cc_dbh, data = restrict_data2,
+                    filter_inds = which(restrict_data2$t2d_aware != 1 & 
+                                          restrict_data2$Sex == "Male"),
+                    formula_y = paste0("diabetes ~ dbh_class + Age + Educ + Inc_hh ",
+                                       "+ Ethnicity + Urban + Physical_activity + Smoking_status ",
+                                       "+ Drinking_status + Food_security + WIC_SNAP + Depression + Anxiety",
+                                       "+ hypertension + high_cholesterol"))
+# Interactions seem to lead to very unstable estimates. Taking out interactions
+summary(fit_f)
+summary(fit_m)
 
 # Main covariate set: food security, physical activity, smoking status, age, sex, 
 # education, income, urban
@@ -739,7 +820,8 @@ dim(fit23$model)
 
 
 #========== Run regression models using csSampling package =====================
-load(paste0(wd, res_dir, "cc_dbh_wolcan_results.RData"))
+
+load(paste0(wd, res_dir, "no_varadj_cc_dbh_wolcan_results.RData"))
 
 # Create survey data using estimated dietary pattern assignments
 svy_data <- data.frame(dbh_class = as.factor(res$estimates_adjust$c_all),
@@ -747,47 +829,278 @@ svy_data <- data.frame(dbh_class = as.factor(res$estimates_adjust$c_all),
                        wts = res$data_vars$w_all)
 svy_data <- svy_data %>%
   mutate_at(c("Educ", "Inc_hh", "Smoking_status", "Drinking_status", 
-              "Physical_activity"), as.factor) %>%
+              "Physical_activity", "hypertension", "diabetes", "high_cholesterol"), 
+            as.factor) %>%
   mutate(htn_categ = as.factor(ifelse(htn_categ == 4, 3, htn_categ)),
          t2d_categ = as.factor(ifelse(t2d_categ == 4, 3, t2d_categ)),
          chol_categ = as.factor(ifelse(chol_categ == 4, 3, chol_categ)))
+svy_data <- svy_data %>%
+  mutate(Sex = factor(Sex, levels = c(1, 0), labels = c("Female", "Male")),
+         Educ = factor(Educ, levels = c(4,3,2,1), 
+                       labels = c("Graduate", "College", "HS", "<HS")),
+         Inc_hh = factor(Inc_hh, levels = c(3,2,1),
+                         labels = c(">20k", "10-20k", "0-10k")),
+         Ethnicity = factor(Ethnicity, levels = c(0, 1), 
+                            labels = c("PR", "Other")),
+         Urban = factor(Urban, levels = c(1, 0), 
+                        labels = c("Urban", "Rural")),
+         Smoking_status = factor(Smoking_status, levels = c(0,1,2),
+                                 labels = c("Never", "Former", "Current")),
+         Drinking_status = factor(Drinking_status, levels = c(0,1,2),
+                                  labels = c("Never", "Former", "Current")),
+         Physical_activity = factor(Physical_activity, levels = c(2,1,0),
+                                    labels = c("Moderate", "Light", "Sedentary")),
+         Food_security = factor(Food_security, levels = c(1, 0), 
+                                labels = c("Secure", "Insecure")),
+         WIC_SNAP = factor(WIC_SNAP, levels = c(0, 1),
+                           labels = c("No", "Yes")),
+         Depression = factor(Depression, levels = c(0,1), 
+                             labels = c("None/Mild", "Moderate/Severe")),
+         Anxiety = factor(Anxiety, levels = c(0,1),
+                          labels = c("None/Mild", "Moderate/Severe")))
 
 # Get weights posterior draws
 wts_draws <- res$estimates_adjust$wts_draws
 wts_draws[1:5, 1:5]
 
-# Test: d = 1
-wts_draws <- as.matrix(res$estimates_adjust$wts_draws[, 1])
-test1 <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
-                           condition = "t2d", save = FALSE,
-                           save_path = paste0(wd, res_dir, "t2d_unaware"))
 
-# Test: d = 2
-wts_draws <- as.matrix(res$estimates_adjust$wts_draws[, 2])
-test2 <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
-                           condition = "t2d", save = FALSE,
-                           save_path = paste0(wd, res_dir, "t2d_unaware"))
+### DBH -> DISEASE (among unaware)
+## T2D
+set.seed(1)
+start_time <- Sys.time()
+# Interaction, core: For interpreting the main DBH effect
+fit_t2d_unaware_coreint <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "t2d", model_covs = "core_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_unaware_core_int"))
+end_time <- Sys.time()
+# No interaction, core: interpreting the main other covariates
+fit_t2d_unaware_core <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "t2d", model_covs = "core",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_unaware_core"))
+# No interaction, full: for interpreting additional other covariates
+fit_t2d_unaware_full <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "t2d", model_covs = "full",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_unaware_full"))
 
+## HTN
+set.seed(1)
+# Interaction, core: For interpreting the main DBH effect
+fit_htn_unaware_coreint <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                             condition = "htn", model_covs = "core_int",
+                                             svy_data = svy_data,
+                                             save_path = paste0(wd, res_dir, "htn_unaware_core_int"))
+# No interaction, core: interpreting the main other covariates
+fit_htn_unaware_core <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                          condition = "htn", model_covs = "core",
+                                          svy_data = svy_data,
+                                          save_path = paste0(wd, res_dir, "htn_unaware_core"))
+# No interaction, full: for interpreting additional other covariates
+fit_htn_unaware_full <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "htn", model_covs = "full",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_unaware_full"))
+## CHOL
+set.seed(1)
+# Interaction, core: For interpreting the main DBH effect
+fit_chol_unaware_coreint <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                             condition = "chol", model_covs = "core_int",
+                                             svy_data = svy_data,
+                                             save_path = paste0(wd, res_dir, "chol_unaware_core_int"))
+# No interaction, core: interpreting the main other covariates
+fit_chol_unaware_core <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                          condition = "chol", model_covs = "core",
+                                          svy_data = svy_data,
+                                          save_path = paste0(wd, res_dir, "chol_unaware_core"))
+# No interaction, full: for interpreting additional other covariates
+fit_chol_unaware_full <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                          condition = "chol", model_covs = "full",
+                                          svy_data = svy_data,
+                                          save_path = paste0(wd, res_dir, "chol_unaware_full"))
+summarize_parms(fit_t2d_unaware_coreint)
+summarize_parms(fit_htn_unaware_coreint)
+summarize_parms(fit_chol_unaware_coreint)
+summarize_parms(wtd_logreg_res)
+
+
+#===========
+
+
+# # Test: d = 1
+# wts_draws <- as.matrix(res$estimates_adjust$wts_draws[, 1])
+# test1 <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+#                            condition = "t2d", save = FALSE,
+#                            save_path = paste0(wd, res_dir, "t2d_unaware"))
+# 
+# mod_mat <- brms::make_standata(formula = test1$brms_mod$formula, 
+#                                data = test1$data)
+# parm_names <- colnames(mod_mat$X)
+# parm_names_cs <- parm_names[-1]  # Remove intercept
+# summarize_parms(all_adj_parms = test1$all_adj_parms, quant_lb = 0.025, 
+#                 quant_ub = 0.975, round_digits = 3, parm_names = parm_names_cs)
+# 
+# # Test: d = 2
+# wts_draws <- as.matrix(res$estimates_adjust$wts_draws[, 1:2])
+# test2 <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+#                            condition = "t2d", save = FALSE,
+#                            save_path = paste0(wd, res_dir, "t2d_unaware"))
+# summarize_parms(all_adj_parms = test2$all_adj_parms, quant_lb = 0.025, 
+#                 quant_ub = 0.975, round_digits = 3, parm_names = parm_names_cs)
+
+
+# DBH -> DISEASE (among unaware)
+set.seed(1)
 fit_t2d_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
-                                     condition = "t2d", save = FALSE,
+                                     condition = "t2d", svy_data = svy_data,
                                      save_path = paste0(wd, res_dir, "t2d_unaware"))
 fit_htn_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
-                                     condition = "htn", 
+                                     condition = "htn", svy_data = svy_data,
                                      save_path = paste0(wd, res_dir, "htn_unaware"))
 fit_chol_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
-                                     condition = "chol", 
+                                     condition = "chol", svy_data = svy_data,
                                      save_path = paste0(wd, res_dir, "chol_unaware"))
+summarize_parms(fit_obj = fit_t2d_unaware)
+summarize_parms(fit_obj = fit_htn_unaware)
+summarize_parms(fit_obj = fit_chol_unaware)
 
+
+# DIAGNOSIS -> DBH (among those with disease)
 fit_t2d_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
-                                     condition = "t2d", 
+                                     condition = "t2d", svy_data = svy_data,
                                      save_path = paste0(wd, res_dir, "t2d_disease"))
 fit_htn_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
-                                     condition = "htn", 
+                                     condition = "htn", svy_data = svy_data,
                                      save_path = paste0(wd, res_dir, "htn_disease"))
 fit_chol_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
-                                      condition = "chol", 
+                                      condition = "chol", svy_data = svy_data,
                                       save_path = paste0(wd, res_dir, "chol_disease"))
+summarize_parms(fit_obj = fit_t2d_disease)
+summarize_parms(fit_obj = fit_htn_disease)
+summarize_parms(fit_obj = fit_chol_disease)
 
+
+# Marginal models
+set.seed(1)
+fit_t2d_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "t2d", model_covs = "marginal",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_unaware_marg"))
+fit_htn_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "htn", model_covs = "marginal",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_unaware_marg"))
+fit_chol_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                      condition = "chol", model_covs = "marginal",
+                                      svy_data = svy_data,
+                                      save_path = paste0(wd, res_dir, "chol_unaware_marg"))
+fit_t2d_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                     condition = "t2d", model_covs = "marginal",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_disease_marg"))
+fit_htn_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                     condition = "htn", model_covs = "marginal",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_disease_marg"))
+fit_chol_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                      condition = "chol", model_covs = "marginal",
+                                      svy_data = svy_data,
+                                      save_path = paste0(wd, res_dir, "chol_disease_marg"))
+summarize_parms(wtd_logreg_res)
+
+# Fully adjusted models
+set.seed(1)
+fit_t2d_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "t2d", model_covs = "full",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_unaware_full"))
+fit_htn_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "htn", model_covs = "full",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_unaware_full"))
+fit_chol_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                      condition = "chol", model_covs = "full",
+                                      svy_data = svy_data,
+                                      save_path = paste0(wd, res_dir, "chol_unaware_full"))
+fit_t2d_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                     condition = "t2d", model_covs = "full",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_disease_full"))
+fit_htn_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                     condition = "htn", model_covs = "full",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_disease_full"))
+fit_chol_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                      condition = "chol", model_covs = "full",
+                                      svy_data = svy_data,
+                                      save_path = paste0(wd, res_dir, "chol_disease_full"))
+
+# Core adjusted models with interaction
+set.seed(1)
+fit_t2d_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "t2d", model_covs = "core_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_unaware_core_int"))
+fit_htn_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "htn", model_covs = "core_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_unaware_core_int"))
+fit_chol_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                      condition = "chol", model_covs = "core_int",
+                                      svy_data = svy_data,
+                                      save_path = paste0(wd, res_dir, "chol_unaware_core_int"))
+fit_t2d_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                     condition = "t2d", model_covs = "core_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_disease_core_int"))
+fit_htn_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                     condition = "htn", model_covs = "core_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_disease_core_int"))
+fit_chol_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                      condition = "chol", model_covs = "core_int",
+                                      svy_data = svy_data,
+                                      save_path = paste0(wd, res_dir, "chol_disease_core_int"))
+
+
+# Fully adjusted models with interaction
+set.seed(1)
+fit_t2d_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "t2d", model_covs = "full_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_unaware_full_int"))
+fit_htn_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                     condition = "htn", model_covs = "full_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_unaware_full_int"))
+fit_chol_unaware <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "unaware", 
+                                      condition = "chol", model_covs = "full_int",
+                                      svy_data = svy_data,
+                                      save_path = paste0(wd, res_dir, "chol_unaware_full_int"))
+fit_t2d_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                     condition = "t2d", model_covs = "full_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "t2d_disease_full_int"))
+fit_htn_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                     condition = "htn", model_covs = "full_int",
+                                     svy_data = svy_data,
+                                     save_path = paste0(wd, res_dir, "htn_disease_full_int"))
+fit_chol_disease <- wtd_logreg_wolcan(wts_draws = wts_draws, subset = "disease", 
+                                      condition = "chol", model_covs = "full_int",
+                                      svy_data = svy_data,
+                                      save_path = paste0(wd, res_dir, "chol_disease_full_int"))
+
+
+### Plot DB pattern distribution among levels of disease categories (marginal)
+plot(svy_data$dbh_class, svy_data$t2d_categ)
+plot(svy_data$dbh_class, svy_data$htn_categ)
+plot(svy_data$dbh_class, svy_data$chol_categ)
+plot_data <- svy_data %>% 
+  group_by(t2d_categ, dbh_class) %>%
+  summarise(num = n())
+plot_data %>% ggplot(aes(x = t2d_categ, y = num, fill = dbh_class)) + 
+  geom_bar(position = "dodge", stat = "identity")
 
 
 # Restrict to those not at risk or at risk and unaware (dbh -> disease)
