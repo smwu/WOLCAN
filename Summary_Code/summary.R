@@ -34,6 +34,7 @@ sum_dir <- "Summary_Results/"  # Summary results directory
 
 # Source summary functions
 source(paste0(wd, code_dir, "summary_functions.R"))
+source(paste0(wd, "Model_Code/model_functions.R"))
 
 #================ Summarize and save results ===================================
 # scenario <- 9
@@ -96,12 +97,13 @@ metrics_all$metrics_wolca <- scen_0_metrics$metrics_wolca
 save(metrics_all, file = paste0(wd, sum_dir, "scen_15/summary.RData"))
 
 # Table of all scenarios together                         
-scenarios <- c(0, 10, 8, 19, 9, 18, 7, 6, 15)
+scenarios <- c(0, 10, 8, 19, 9, 18, 4, 7, 6, 15)
 scen_names <- c("Sample size 5% high overlap (baseline)", 
                 "Sample size 5% low overlap", "Sample size 1% high overlap", 
                 "Sample size 1% low overlap", 
                 "Sample size PROSPECT high overlap", 
                 "Sample size PROSPECT low overlap",
+                "Baseline with no variance adjustment",
                 "Baseline with non-disjoint patterns", 
                 "Baseline with D = 10",
                 "Baseline with missing selection covariates")

@@ -155,7 +155,7 @@ if (already_done) {
                 K_max = K_max, adapt_seed = adapt_seed, K_fixed = NULL, 
                 fixed_seed = fixed_seed, class_cutoff = 0.05, 
                 n_runs = n_runs, burn = burn, thin = thin, update = update, 
-                save_res = TRUE, save_path = save_path)
+                save_res = TRUE, save_res_d = FALSE, save_path = save_path)
   
   ### Run unweighted model
   if (scenario %in% c(0, 1, 7:11, 18:19)) {

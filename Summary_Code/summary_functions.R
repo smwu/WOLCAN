@@ -554,41 +554,7 @@ get_y_metrics_i <- function(res, true_xi, true_params, true_K, dist_type,
               xi_cover_mean = xi_cover_mean))
 }
 
-get_subset_dist_wolcan <- function(large_par, small_par, param_name, dist_type) {
-  if (param_name == "theta") {
-    large_K <- dim(large_par)[2]   ## Change to handle 0's
-    sum(large_par[1, , 1] != 0)
-    small_K <- dim(small_par)[2]
-  } else if (param_name == "pi") {
-    large_K <- length(large_par)
-    small_K <- length(small_par)
-  } else if (param_name == "xi") {
-    large_K <- dim(large_par)[1] 
-    small_K <- dim(small_par)[1]
-  } else {
-    stop("Error: 'param_name' must be either 'theta', 'pi', or 'xi'")
-  }
-  # Find all subsets of large_K with size equal to small_K
-  sub_perms <- gtools::permutations(n = large_K, r = small_K)
-  # Obtain dist (Frobenius norm) between large_par and small_par per permutation
-  dist_sub_perms <- numeric(nrow(sub_perms))
-  for (i in 1:nrow(sub_perms)) {
-    if (param_name == "theta") {
-      large_par_sub <- large_par[ , sub_perms[i, ], ]
-    } else if (param_name == "pi") {
-      large_par_sub <- large_par[sub_perms[i, ]]
-    } else if (param_name == "xi") {
-      large_par_sub <- large_par[sub_perms[i, ], ]
-    }
-    dist_sub_perms[i] <- get_dist_wolcan(small_par, large_par_sub, "mean_abs")
-  }
-  # Lowest dist out of all permutations
-  par_dist <- min(dist_sub_perms)
-  # Ordering corresponding to lowest dist
-  order_large <- sub_perms[which.min(dist_sub_perms), ]
-  
-  return(list(par_dist = par_dist, order_large = order_large))
-}
+
 
 get_pi_dist_wolcan <- function(est_pi, true_pi, order, est_K, true_K, subset = TRUE,
                                order_sub_est, order_sub_true, dist_type) {
@@ -605,75 +571,7 @@ get_pi_dist_wolcan <- function(est_pi, true_pi, order, est_K, true_K, subset = T
   return(list("pi_dist" = pi_dist, "order" = order, "est_pi_perm" = est_pi[order]))
 }
 
-get_theta_dist_wolcan <- function(est_theta, true_theta, est_K, true_K, 
-                                  subset, dist_type) {
-  
-  ### First get minimum distance using full vectors (with additional 0's)
-  ### to get optimal ordering
-  # Find all permutations of est_theta and true_theta with filler 0's
-  all_perms <- gtools::permutations(n = dim(est_theta)[2], r = dim(true_theta)[2])
-  # Obtain vector of mean absolute distance between est and true theta, 
-  # calculated for each permutation
-  dist_all_perms <- numeric(nrow(all_perms))
-  for (i in 1:nrow(all_perms)) {
-    est_theta_perm <- est_theta[,all_perms[i, ],]
-    dist_all_perms[i] <- get_dist_wolcan(est_theta_perm, true_theta, 
-                                  dist_type = dist_type) 
-  }
-  # Obtain optimal ordering of classes
-  order <- all_perms[which.min(dist_all_perms), ]
-  est_theta_perm <- est_theta[ , order, ]
-  
-  # Initialize subset ordering of classes
-  order_sub_est <- order
-  order_sub_true <- 1:true_K
-  # Lowest dist out of all permutations
-  theta_dist <- min(dist_all_perms)
-  
-  ### Option to use this minimum distance, or calculate minimum distance after
-  ### subsetting (subset == TRUE)
-  if (subset) {   # Calculate distance after subsetting
-    if (est_K < true_K) {  # If missing a true class
-      theta_sub <- get_subset_dist_wolcan(large_par = true_theta[, 1:true_K, ], 
-                                   small_par = est_theta[, 1:est_K, ], 
-                                   param_name = "theta", dist_type = dist_type)
-      theta_dist <- theta_sub$par_dist         # Distance
-      order_sub_true <- theta_sub$order_large  # Subset order for true_theta
-      order_sub_est <- 1:est_K                 
-    } else if (true_K < est_K) {  # If extra class
-      theta_sub <- get_subset_dist_wolcan(large_par = est_theta[, 1:est_K, ], 
-                                   small_par = true_theta[, 1:true_K, ],
-                                   param_name = "theta", dist_type = dist_type)
-      theta_dist <- theta_sub$par_dist
-      order_sub_est <- theta_sub$order_large  # Subset order for est_theta
-      order_sub_true <- 1:true_K
-    } else {  # true_K == est_K
-      # Lowest dist out of all permutations
-      theta_dist <- min(dist_all_perms)
-      order_sub_est <- order
-      order_sub_true <- 1:true_K
-    }
-  }
-  
-  ### Return dist, ordering, reordered estimate, and subsetted orderings
-  return(list("theta_dist" = theta_dist, "order" = order, 
-              "est_theta_perm" = est_theta_perm, 
-              "order_sub_est" = order_sub_est,
-              "order_sub_true" = order_sub_true))
-}
 
-get_dist_wolcan <- function(par1, par2, dist_type = "mean_abs") {
-  if (dist_type == "mean_abs") {  # Mean absolute error
-    dist <- mean(abs(par1 - par2))
-  } else if (dist_type == "sum_sq") {  # Frobenius norm / squared Euclidean norm
-    dist <- sum((par1 - par2)^2)
-  } else if (dist_type == "mean_sq") {  # MSE
-    dist <- mean((par1 - par2)^2)
-  } else {
-    stop("Error: dist_type must be 'mean_abs', 'sum_sq', or 'mean_sq' ")
-  }
-  return(dist)
-}
 
 get_true_params_wolcan <- function(sim_pop) {
   # Get true pi using population data

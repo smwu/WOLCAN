@@ -322,8 +322,10 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
 ### Generate population
-n_B <- 2000  # Sample size for non-probability sample
-n_R <- 100000  # Sample size for reference sample
+n_B <- 1500  # Sample size for non-probability sample
+n_R <- 75000  # Sample size for reference sample
+    # n_B <- 2000  # Sample size for non-probability sample
+    # n_R <- 100000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = TRUE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 
@@ -858,8 +860,10 @@ beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j)
         `c_all2:A1` = c(0, 2, -2, 0), `c_all3:A1` = c(0, -1, -2, -1))))
 
 ### Generate population
-n_B <- 2000  # Sample size for non-probability sample
-n_R <- 100000  # Sample size for reference sample
+n_B <- 1500  # Sample size for non-probability sample
+n_R <- 75000  # Sample size for reference sample
+    # n_B <- 2000  # Sample size for non-probability sample
+    # n_R <- 100000  # Sample size for reference sample
 sim_pop <- sim_pop_wolcan(N = N, J = J, K = K, R = R, rho = rho, n_B = n_B, 
                           n_R = n_R, high_overlap = FALSE, formula_c = formula_c, 
                           beta_mat_c = beta_mat_c, formula_x = formula_x, 

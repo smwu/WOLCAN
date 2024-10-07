@@ -50,6 +50,8 @@
 # pseudo-weights. Must be one of `"bart"` (default) or `"glm"`.
 # overwrite: Whether to overwrite existing results. Default is TRUE.
 # weights_only: Whether only the weights should be obtained. Default is FALSE.
+#   save_res_d: Boolean indicating if the fixed sampler results for each draw d, 
+# used when MI = TRUE, should be saved. Default is `FALSE`.
 # Outputs:
 # 
 wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"), 
@@ -62,7 +64,7 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
                    run_adapt = TRUE, K_max = 30, adapt_seed = 1, 
                    K_fixed = NULL, fixed_seed = 1, class_cutoff = 0.05,
                    n_runs = 20000, burn = 10000, thin = 5, update = 1000,
-                   save_res = TRUE, save_path = NULL,
+                   save_res = TRUE, save_res_d = FALSE, save_path = NULL,
                    alpha_adapt = NULL, eta_adapt = NULL,
                    alpha_fixed = NULL, eta_fixed = NULL, 
                    overwrite = TRUE, weights_only = FALSE) {
@@ -204,7 +206,8 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
                                     x_mat = x_mat, fixed_seed = fixed_seed,
                                     class_cutoff = class_cutoff, n_runs = n_runs, 
                                     burn = burn, thin = thin, update = update, 
-                                    alpha_fixed = alpha_fixed, eta_fixed = eta_fixed)
+                                    alpha_fixed = alpha_fixed, eta_fixed = eta_fixed,
+                                    save_res_d = save_res_d, save_path = save_path)
       
       # Add variance estimates to output list
       res$estimates_adjust <- comb_estimates
@@ -698,7 +701,8 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                         tol = 1e-8, parallel = TRUE, n_cores = 4,
                         adjust = TRUE, class_cutoff = 0.05, n_runs = 20000, 
                         burn = 10000, thin = 5, update = 1000,
-                        alpha_fixed = NULL, eta_fixed = NULL) {
+                        alpha_fixed = NULL, eta_fixed = NULL, 
+                        save_res_d = FALSE, save_path = NULL) {
   
   # Get dimensions
   M <- floor(n_runs / thin) - floor(burn / thin) 
@@ -723,7 +727,7 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                          burn = burn, thin = thin, update = update,
                          fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
                          eta_fixed = eta_fixed, D = D,
-                         save_res = save_res, save_path = save_path)
+                         save_res_d = save_res_d, save_path = save_path)
     # Shutdown cluster
     stopCluster(cluster)
     
@@ -734,7 +738,7 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
                       n_runs = n_runs, burn = burn, thin = thin, update = update,
                       fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
                       eta_fixed = eta_fixed, D = D, 
-                      save_res = save_res, save_path = save_path)
+                      save_res_d = save_res_d, save_path = save_path)
   }
   
   # Keep only the draws with K_red = K_fixed
@@ -976,7 +980,7 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
 # inherit parameters from get_var_dir
 wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn, 
                     thin, update, fixed_seed, alpha_fixed, eta_fixed, D, 
-                    save_res, save_path) {
+                    save_res_d, save_path) {
   
   # # Source Rcpp functions from baysc package
   # Rcpp::sourceCpp(rcpp_path)
@@ -1030,7 +1034,7 @@ wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn,
   est_d$wts <- wts_d
   
   # Save output
-  if (save_res) {
+  if (save_res_d) {
     save(est_d, file = paste0(save_path, "draw_", d, "_results.RData"))
   }
   
@@ -1269,4 +1273,111 @@ trim_w <- function(w, m='t1', c=10, max=Inf){
 get_mode <- function(v) {
   uniqv <- unique(v)
   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+
+get_theta_dist_wolcan <- function(est_theta, true_theta, est_K, true_K, 
+                                  subset, dist_type) {
+  
+  ### First get minimum distance using full vectors (with additional 0's)
+  ### to get optimal ordering
+  # Find all permutations of est_theta and true_theta with filler 0's
+  all_perms <- gtools::permutations(n = dim(est_theta)[2], r = dim(true_theta)[2])
+  # Obtain vector of mean absolute distance between est and true theta, 
+  # calculated for each permutation
+  dist_all_perms <- numeric(nrow(all_perms))
+  for (i in 1:nrow(all_perms)) {
+    est_theta_perm <- est_theta[,all_perms[i, ],]
+    dist_all_perms[i] <- get_dist_wolcan(est_theta_perm, true_theta, 
+                                         dist_type = dist_type) 
+  }
+  # Obtain optimal ordering of classes
+  order <- all_perms[which.min(dist_all_perms), ]
+  est_theta_perm <- est_theta[ , order, ]
+  
+  # Initialize subset ordering of classes
+  order_sub_est <- order
+  order_sub_true <- 1:true_K
+  # Lowest dist out of all permutations
+  theta_dist <- min(dist_all_perms)
+  
+  ### Option to use this minimum distance, or calculate minimum distance after
+  ### subsetting (subset == TRUE)
+  if (subset) {   # Calculate distance after subsetting
+    if (est_K < true_K) {  # If missing a true class
+      theta_sub <- get_subset_dist_wolcan(large_par = true_theta[, 1:true_K, ], 
+                                          small_par = est_theta[, 1:est_K, ], 
+                                          param_name = "theta", dist_type = dist_type)
+      theta_dist <- theta_sub$par_dist         # Distance
+      order_sub_true <- theta_sub$order_large  # Subset order for true_theta
+      order_sub_est <- 1:est_K                 
+    } else if (true_K < est_K) {  # If extra class
+      theta_sub <- get_subset_dist_wolcan(large_par = est_theta[, 1:est_K, ], 
+                                          small_par = true_theta[, 1:true_K, ],
+                                          param_name = "theta", dist_type = dist_type)
+      theta_dist <- theta_sub$par_dist
+      order_sub_est <- theta_sub$order_large  # Subset order for est_theta
+      order_sub_true <- 1:true_K
+    } else {  # true_K == est_K
+      # Lowest dist out of all permutations
+      theta_dist <- min(dist_all_perms)
+      order_sub_est <- order
+      order_sub_true <- 1:true_K
+    }
+  }
+  
+  ### Return dist, ordering, reordered estimate, and subsetted orderings
+  return(list("theta_dist" = theta_dist, "order" = order, 
+              "est_theta_perm" = est_theta_perm, 
+              "order_sub_est" = order_sub_est,
+              "order_sub_true" = order_sub_true))
+}
+
+get_dist_wolcan <- function(par1, par2, dist_type = "mean_abs") {
+  if (dist_type == "mean_abs") {  # Mean absolute error
+    dist <- mean(abs(par1 - par2))
+  } else if (dist_type == "sum_sq") {  # Frobenius norm / squared Euclidean norm
+    dist <- sum((par1 - par2)^2)
+  } else if (dist_type == "mean_sq") {  # MSE
+    dist <- mean((par1 - par2)^2)
+  } else {
+    stop("Error: dist_type must be 'mean_abs', 'sum_sq', or 'mean_sq' ")
+  }
+  return(dist)
+}
+
+get_subset_dist_wolcan <- function(large_par, small_par, param_name, dist_type) {
+  if (param_name == "theta") {
+    large_K <- dim(large_par)[2]   ## Change to handle 0's
+    sum(large_par[1, , 1] != 0)
+    small_K <- dim(small_par)[2]
+  } else if (param_name == "pi") {
+    large_K <- length(large_par)
+    small_K <- length(small_par)
+  } else if (param_name == "xi") {
+    large_K <- dim(large_par)[1] 
+    small_K <- dim(small_par)[1]
+  } else {
+    stop("Error: 'param_name' must be either 'theta', 'pi', or 'xi'")
+  }
+  # Find all subsets of large_K with size equal to small_K
+  sub_perms <- gtools::permutations(n = large_K, r = small_K)
+  # Obtain dist (Frobenius norm) between large_par and small_par per permutation
+  dist_sub_perms <- numeric(nrow(sub_perms))
+  for (i in 1:nrow(sub_perms)) {
+    if (param_name == "theta") {
+      large_par_sub <- large_par[ , sub_perms[i, ], ]
+    } else if (param_name == "pi") {
+      large_par_sub <- large_par[sub_perms[i, ]]
+    } else if (param_name == "xi") {
+      large_par_sub <- large_par[sub_perms[i, ], ]
+    }
+    dist_sub_perms[i] <- get_dist_wolcan(small_par, large_par_sub, "mean_abs")
+  }
+  # Lowest dist out of all permutations
+  par_dist <- min(dist_sub_perms)
+  # Ordering corresponding to lowest dist
+  order_large <- sub_perms[which.min(dist_sub_perms), ]
+  
+  return(list(par_dist = par_dist, order_large = order_large))
 }
