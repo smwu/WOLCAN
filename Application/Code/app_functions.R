@@ -47,26 +47,38 @@ res_plots <- function(res) {
 #   model_covs: String specifying whether the model will be "marginal", with 
 # "core" covariates (default), or with "full" covariate adjustment
 # Add variability of the weights
-wtd_logreg_wolcan <- function(wts_draws, subset, condition, save_res = TRUE,
+wtd_logreg_wolcan <- function(wts_draws, exposure, filter_categ, condition, 
+                              save_res = TRUE,
                               save_path, model_covs = "core", svy_data) {
-  # Check input arguments
-  if (subset == "unaware") {
-    filter_categ <- 3
-  } else if (subset == "disease") {
-    filter_categ <- 1
-  } else {
-    stop("Input argument 'subset' must be one of 'unaware' or 'disease'")
-  }
+  # # Check input arguments
+  # if (subset == "unaware") {
+  #   filter_categ <- 3
+  # } else if (subset == "disease") {
+  #   filter_categ <- 1
+  # } else if (subset == "none") {
+  #   filter_categ <- 4
+  # } else {
+  #   stop("Input argument 'subset' must be one of 'unaware', 'disease', or 'none'")
+  # }
   
   if (condition == "htn") {
     cond_categ <- "htn_categ"
+    cond_diag <- "htn_aware"
     cond <- "hypertension"
+    other_y <- c("diabetes + high_cholesterol")
+    other_y_diag <- c("t2d_aware + chol_aware")
   } else if (condition == "t2d") {
     cond_categ <- "t2d_categ"
+    cond_diag <- "t2d_aware"
     cond <- "diabetes"
+    other_y <- c("hypertension + high_cholesterol")
+    other_y_diag <- c("htn_aware + chol_aware")
   } else if (condition == "chol") {
     cond_categ <- "chol_categ"
+    cond_diag <- "chol_aware"
     cond <- "high_cholesterol"
+    other_y <- c("hypertension + diabetes")
+    other_y_diag <- c("t2d_aware + htn_aware")
   } else {
     stop("Input argument 'condition' must be one of 'htn', 't2d', or 'chol'")
   }
@@ -82,22 +94,39 @@ wtd_logreg_wolcan <- function(wts_draws, subset, condition, save_res = TRUE,
   if (model_covs == "marginal") {
     add_covs <- ""
   } else if (model_covs == "core") {
-    if (subset == "unaware") {
+    if (exposure == "dbh_class") {
       add_covs <- paste0("+ Age + Sex + Educ + Inc_hh + Ethnicity + Urban ", 
-                         "+ Physical_activity + Smoking_status + Drinking_status", 
-                         "+ hypertension + high_cholesterol")
+                         "+ Physical_activity + Smoking_status + Drinking_status +", 
+                         other_y)
+    } else if (exposure == "diagnosis") {
+      add_covs <- paste0("+ Age + Sex + Educ + Inc_hh + Ethnicity + Urban ", 
+                         "+ Physical_activity + Smoking_status + Drinking_status +", 
+                         other_y_diag)
     }
   } else if (model_covs == "full") {
-    add_covs <- paste0("+ Age + Sex + Educ + Inc_hh + Ethnicity + Urban ",
-                       "+ Physical_activity + Smoking_status + Drinking_status", 
-                       "+ hypertension + high_cholesterol + Food_security",
-                       "+ WIC_SNAP + Social_support + Perceived_stress",
-                       "+ Depression + Anxiety")
+    if (exposure == "dbh_class") {
+      add_covs <- paste0("+ Age + Sex + Educ + Inc_hh + Ethnicity + Urban ",
+                         "+ Physical_activity + Smoking_status + Drinking_status +", 
+                         other_y, " + Food_security",
+                         "+ WIC_SNAP + Social_support + Perceived_stress",
+                         "+ Depression + Anxiety")
+    } else if (exposure == "diagnosis") {
+      add_covs <- paste0("+ Age + Sex + Educ + Inc_hh + Ethnicity + Urban ",
+                         "+ Physical_activity + Smoking_status + Drinking_status +", 
+                         other_y_diag, " + Food_security",
+                         "+ WIC_SNAP + Social_support + Perceived_stress",
+                         "+ Depression + Anxiety")
+    }
+    
   } else if (model_covs == "core_int") {
-    if (subset == "unaware") {
-      add_covs <- paste0("* (Age + Sex + Inc_hh + Urban + Physical_activity)",
-                         "+ Educ + Smoking_status + Drinking_status",
-                         "+ hypertension + high_cholesterol")
+    if (exposure == "dbh_class") {
+      add_covs <- paste0("* (Age + Sex) + Physical_activity + Inc_hh + Urban",
+                         "+ Educ + Smoking_status + Drinking_status +",
+                         other_y)
+    } else if (exposure == "diagnosis") {
+      add_covs <- paste0("* (Age + Sex + Physical_activity) + Inc_hh + Educ",
+                         " + Urban + Smoking_status + Drinking_status +",
+                         other_y_diag)
     }
   } else if (model_covs == "full_int") {
     add_covs <- paste0("* (Age + Sex + Educ + Inc_hh + Urban + Physical_activity",
@@ -107,14 +136,14 @@ wtd_logreg_wolcan <- function(wts_draws, subset, condition, save_res = TRUE,
   } else {
     stop("Invalid model_covs input specified.")
   }
-  if (subset == "unaware") {
+  if (exposure == "dbh_class") {
     model_formula <- as.formula(paste0(cond, " | weights(wts_d) ~ dbh_class ",
                                        add_covs)) 
-  } else if (subset == "disease") {
-    model_formula <- as.formula(paste0("dbh_class | weights(wts_d) ~ ", cond_categ,
+  } else if (exposure == "diagnosis") {
+    model_formula <- as.formula(paste0("dbh_class | weights(wts_d) ~ ", cond_diag,
                                        add_covs)) 
   } else {
-    stop("Invalid subset input specified.")
+    stop("Invalid exposure input specified.")
   }
   
   brms_mod <- brms::brmsformula(model_formula, center = TRUE)
@@ -129,11 +158,20 @@ wtd_logreg_wolcan <- function(wts_draws, subset, condition, save_res = TRUE,
     svy_data_subset_d <- svy_data_d %>%
       filter(!!rlang::sym(cond_categ) != filter_categ)
     # Remove NAs
-    svy_data_subset_d <- svy_data_subset_d %>%
-      drop_na(hypertension, diabetes, high_cholesterol, 
-              Age, Sex, Educ, Inc_hh, Ethnicity, Urban, Physical_activity, 
-              Smoking_status, Drinking_status, Food_security, WIC_SNAP, 
-              Social_support, Perceived_stress, Depression, Anxiety)
+    if (exposure == "dbh_class") {
+      svy_data_subset_d <- svy_data_subset_d %>%
+        drop_na(hypertension, diabetes, high_cholesterol, 
+                Age, Sex, Educ, Inc_hh, Ethnicity, Urban, Physical_activity, 
+                Smoking_status, Drinking_status, Food_security, WIC_SNAP, 
+                Social_support, Perceived_stress, Depression, Anxiety)
+    } else if (exposure == "diagnosis") {
+      svy_data_subset_d <- svy_data_subset_d %>%
+        drop_na(htn_aware, t2d_aware, chol_aware, 
+                Age, Sex, Educ, Inc_hh, Ethnicity, Urban, Physical_activity, 
+                Smoking_status, Drinking_status, Food_security, WIC_SNAP, 
+                Social_support, Perceived_stress, Depression, Anxiety)
+    }
+    
     # Renormalize weights
     svy_data_subset_d <- svy_data_subset_d %>%
       mutate(wts_d = wts_d * nrow(svy_data_subset_d) / sum(wts_d))
@@ -160,12 +198,22 @@ wtd_logreg_wolcan <- function(wts_draws, subset, condition, save_res = TRUE,
     svy_des_subset_d <- survey::svydesign(ids = ~1, weights = ~wts_d,
                                           data = svy_data_subset_d)
     # print(weights(svy_des_subset_d)[1:10])
-    fit_d <- csSampling::cs_sampling_brms(svydes = svy_des_subset_d, 
-                                          brmsmod = brms_mod, 
-                                          data = svy_data_subset_d, 
-                                          family = bernoulli(link = "logit"),
-                                          ctrl_stan = list(chains = 3, iter = 2000, 
-                                                           warmup = 1000, thin = 5))
+    if (exposure == "dbh_class") {
+      fit_d <- csSampling::cs_sampling_brms(svydes = svy_des_subset_d, 
+                                            brmsmod = brms_mod, 
+                                            data = svy_data_subset_d, 
+                                            family = bernoulli(link = "logit"),
+                                            ctrl_stan = list(chains = 3, iter = 2000, 
+                                                             warmup = 1000, thin = 5))
+    } else if (exposure == "diagnosis") {
+      fit_d <- csSampling::cs_sampling_brms(svydes = svy_des_subset_d, 
+                                            brmsmod = brms_mod, 
+                                            data = svy_data_subset_d, 
+                                            family = categorical(link = "logit"),
+                                            ctrl_stan = list(chains = 3, iter = 2000, 
+                                                             warmup = 1000, thin = 5))
+    }
+    
     sampled_parms_draws[[d]] <- fit_d$sampled_parms
     adj_parms_draws[[d]] <- fit_d$adjusted_parms
     stan_fit_draws[[d]] <- fit_d$stan_fit
@@ -189,20 +237,40 @@ wtd_logreg_wolcan <- function(wts_draws, subset, condition, save_res = TRUE,
 
 # fit_obj: Fit object resulting from a call to `wtd_logreg_wolcan()`
 summarize_parms <- function(fit_obj, quant_lb = 0.025, quant_ub = 0.975, 
-                            round_digits = 3, parm_names = TRUE) {
+                            round_digits = 3, parm_names = TRUE, 
+                            exponentiate = TRUE, diag = FALSE) {
   all_adj_parms <- fit_obj$all_adj_parms
-  summary_adj_parms <- t(apply(all_adj_parms, 2, function(x) c(mean(x, na.rm = TRUE), 
-                                                               quantile(x, c(0.025, 0.975), na.rm = TRUE),
-                                                               mean(x > 0, na.rm = TRUE),
-                                                               mean(x < 0, na.rm = TRUE))))
-  summary_adj_parms <- round(summary_adj_parms, round_digits)
-  colnames(summary_adj_parms) <- c("Mean", "2.5%", "97.5%", "P(xi>0)", "P(xi<0)")
+  summary_adj_parms <- t(apply(all_adj_parms, 2, function(x) 
+    c(mean(x, na.rm = TRUE), 
+      quantile(x, c(quant_lb, quant_ub), na.rm = TRUE),
+      mean(x > 0, na.rm = TRUE),
+      mean(x < 0, na.rm = TRUE))))
+  if (exponentiate) {
+    summary_adj_parms[, 1:3] <- exp(summary_adj_parms[, 1:3])
+  }
+  summary_adj_parms <- as.data.frame(round(summary_adj_parms, round_digits))
+  colnames(summary_adj_parms) <- c("Mean", paste0(quant_lb*100, "%"), 
+                                   paste0(quant_ub*100, "%"), "P(xi>0)", "P(xi<0)")
   if (parm_names) {
-    mod_mat <- brms::make_standata(formula = fit_obj$brms_mod$formula, 
-                                   data = fit_obj$data, family = "bernoulli")
-    parm_names <- colnames(mod_mat$X)
-    parm_names_cs <- parm_names[-1]  # Remove intercept
-    rownames(summary_adj_parms)[1:length(parm_names_cs)] <- parm_names_cs
+    if (diag) {  # categorical outcome
+      mod_mat <- brms::make_standata(formula = fit_obj$brms_mod$formula, 
+                                     data = fit_obj$data, family = "categorical")
+      parm_names <- colnames(mod_mat$X_mu2)
+      categs <- levels(fit_obj$data$dbh_class)
+      n_categs <- length(categs)
+      parm_names <- c(parm_names[-1], parm_names[1])  # Intercept at end
+      parm_names_cs <- rep(parm_names, times = (n_categs-1))
+      summary_adj_parms$dbh_class <- NA
+      summary_adj_parms$dbh_class[1:length(parm_names_cs)] <-
+        rep(categs[-1], each = length(parm_names))
+    } else {  # binary outcome
+      mod_mat <- brms::make_standata(formula = fit_obj$brms_mod$formula, 
+                                     data = fit_obj$data, family = "bernoulli")
+      parm_names <- colnames(mod_mat$X)
+      parm_names_cs <- parm_names[-1]  # Remove intercept
+    }
+    summary_adj_parms$Variable <- NA
+    summary_adj_parms$Variable[1:length(parm_names_cs)] <- parm_names_cs
   }
   
   return(summary_adj_parms)
@@ -377,4 +445,88 @@ vars_across_class_wolcan <- function(c_all, cov_df, sampling_wt, res, stratum_id
   }
   # Output table
   return(output_df)
+}
+
+
+
+# Create forest plot of regression odds ratios
+create_mod_plot <- function(summ_mod_list) {
+  n_mods <- length(summ_mod_list)
+  plot_df <- as.data.frame(matrix(NA, nrow = 3*n_mods, ncol = 5))
+  colnames(plot_df) <- c("Outcome", "Pattern", "OR", "Lower", "Upper")
+  plot_df[, 1] <- c(rep("Type 2 Diabetes", 3), rep("Hypertension", 3), 
+                    rep("High Cholesterol", 3))
+  plot_df[, 2] <- rep(c("DBP2", "DBP3", "DBP4"), times = 3)
+  counter <- 0
+  for (i in 1:length(summ_mod_list)) {
+    plot_df[1:3 + (counter * 3), 3:5] <- summ_mod_list[[i]][1:3, 1:3]
+    counter <- counter + 1
+  }
+  
+  plot_df %>% 
+    ggplot(aes(x=Outcome, y=OR, ymin=Lower, ymax=Upper,col=fct_rev(Pattern),
+               fill=fct_rev(Pattern))) + 
+    scale_fill_brewer(palette = "Set2") + scale_color_brewer(palette = "Set2") +
+    theme_bw() + 
+    #specify position here
+    geom_linerange(size=5,position=position_dodge(width = 0.5)) +
+    geom_hline(yintercept=1, lty=2) +
+    #specify position here too
+    geom_point(size=3, shape=21, colour="white", stroke = 0.5,
+               position=position_dodge(width = 0.5)) +
+    xlab("Outcome") + ylab("Odds Ratio Scale") + 
+    geom_hline(yintercept = 1, linetype = "dashed", col = "gray") + 
+    guides(fill = guide_legend(reverse = TRUE),
+           color = guide_legend(reverse = TRUE)) + 
+    labs(fill = "Pattern", col = "Pattern") +
+    coord_flip() 
+}
+
+# Create forest plot of regression odds ratios with faceting for multiple plots
+create_mod_plot_multiple <- function(summ_mod_list_multiple, mod_labels,
+                                     legend_labels = NULL) {
+  if (is.null(legend_labels)) {
+    legend_labels <- c("DBP2", "DBP3", "DBP4")
+  }
+  n_mult <- length(summ_mod_list_multiple)
+  plot_df_list <- list()
+  for (i in 1:n_mult) {
+    summ_mod_list <- summ_mod_list_multiple[[i]]
+    n_mods <- length(summ_mod_list)
+    plot_df_i <- as.data.frame(matrix(NA, nrow = 3*n_mods, ncol = 5))
+    colnames(plot_df_i) <- c("Outcome", "Pattern", "OR", "Lower", "Upper")
+    plot_df_i[, 1] <- c(rep("Type 2 Diabetes", 3), rep("Hypertension", 3), 
+                      rep("High Cholesterol", 3))
+    plot_df_i[, 2] <- rep(legend_labels, times = 3)
+    counter <- 0
+    for (j in 1:length(summ_mod_list)) {
+      plot_df_i[1:3 + (counter * 3), 3:5] <- summ_mod_list[[j]][1:3, 1:3]
+      counter <- counter + 1
+    }
+    n_rows <- nrow(plot_df_i)
+    plot_df_list[[i]] <- plot_df_i
+  }
+  
+  plot_df <- as.data.frame(do.call("rbind", plot_df_list))
+  plot_df$Subset <- factor(rep(mod_labels, each = n_rows))
+  
+  plot_df %>% 
+    ggplot(aes(x=Outcome, y=OR, ymin=Lower, ymax=Upper,col=fct_rev(Pattern),
+               fill=fct_rev(Pattern))) + 
+    scale_fill_brewer(palette = "Set2") + scale_color_brewer(palette = "Set2") +
+    theme_bw() + 
+    #specify position here
+    geom_linerange(size=4.5,position=position_dodge(width = 0.5)) +
+    geom_hline(yintercept=1, lty=2) +
+    #specify position here too
+    geom_point(size=2.5, shape=21, colour="white", stroke = 0.5,
+               position=position_dodge(width = 0.5)) +
+    xlab("Outcome") + ylab("Odds Ratio Scale") + 
+    geom_hline(yintercept = 1, linetype = "dashed", col = "gray") + 
+    guides(fill = guide_legend(reverse = TRUE),
+           color = guide_legend(reverse = TRUE)) + 
+    labs(fill = "Pattern", col = "Pattern") +
+    coord_flip() + 
+    facet_grid(fct_rev(Subset) ~ .) + 
+    theme(strip.background = element_rect(fill = "aliceblue"))
 }
