@@ -362,7 +362,7 @@ outcomes <- outcomes_raw %>%
       .default = 0),
     htn_aware = case_when(
       SR_HTN == 1 | SR_TXHTN == 1 ~ 1,
-      is.na(SR_HTN) ~ NA,
+      is.na(SR_HTN) & is.na(SR_TXHTN) & is.na(bpsys_avg) & is.na(bpdias_avg) ~ NA,
       .default = 0),
     htn_treated = case_when(
       SR_TXHTN == 1 ~ 1,
@@ -380,7 +380,7 @@ outcomes <- outcomes_raw %>%
       .default = 0),
     t2d_aware = case_when(
       SR_DIABETES == 1 | SR_TXDIABETES == 1 ~ 1,
-      is.na(SR_DIABETES) ~ NA,
+      is.na(SR_DIABETES) & is.na(SR_TXDIABETES) & is.na(FBS) & is.na(HBA1C) ~ NA,
       .default = 0),
     t2d_treated = case_when(
       SR_TXDIABETES == 1 ~ 1, 
@@ -398,7 +398,7 @@ outcomes <- outcomes_raw %>%
       .default = 0),
     chol_aware = case_when(
       SR_HCHOLESTEROL == 1 | SR_TXHCHOLESTEROL == 1 ~ 1,
-      is.na(SR_HCHOLESTEROL) ~ NA,
+      is.na(SR_HCHOLESTEROL) & is.na(SR_TXHCHOLESTEROL) & is.na(CHOLESTEROL) ~ NA,
       .default = 0),
     chol_treated = case_when(
       SR_TXHCHOLESTEROL == 1 ~ 1, 
