@@ -284,33 +284,171 @@ res_agePRCS_unwt <- wolca(x_mat = x_mat, sampling_wt = rep(1, nrow(x_mat)),
 res_agePRCS_unwt <- res
 res_plots(res = res_agePRCS_unwt)
 
-# CHECK UNWT plot_class_probs ERROR!!!!!
-
-
 
 #==================== Unweighted outcome regression ============================
 
 # Load unweighted clustering results
 load(paste0(wd, res_dir, "agePRCS_unwt_cc_dbh_wolca_results.RData"))
 
+# Create survey data using estimated dietary pattern assignments
+svy_data <- data.frame(dbh_class = as.factor(res$estimates$c_all),
+                       restrict_data, 
+                       wts = res$data_vars$w_all)
+svy_data <- svy_data %>%
+  mutate(# Combine moderate/vigorous activity into light activity
+    Physical_activity = as.factor(ifelse(Physical_activity == 2, 1, 
+                                         Physical_activity))) %>%
+  mutate_at(c("Educ", "Inc_hh", "Smoking_status", "Drinking_status",
+              "diabetes", "hypertension", "high_cholesterol"), 
+            as.factor) %>%
+  # Combine treated into aware category
+  mutate(htn_categ = as.factor(ifelse(htn_categ == 4, 3, htn_categ)),
+         t2d_categ = as.factor(ifelse(t2d_categ == 4, 3, t2d_categ)),
+         chol_categ = as.factor(ifelse(chol_categ == 4, 3, chol_categ))) %>%
+  # Categorical Age
+  mutate(Age_cat = ifelse(Age < 55, "<55", ">=55"))
+# Relabel factor levels
+svy_data <- svy_data %>%
+  mutate(Sex = factor(Sex, levels = c(1, 0), labels = c("Female", "Male")),
+         Educ = factor(Educ, levels = c(4,3,2,1), 
+                       labels = c("Graduate", "College", "HS", "<HS")),
+         Inc_hh = factor(Inc_hh, levels = c(3,2,1),
+                         labels = c(">20k", "10-20k", "0-10k")),
+         Ethnicity = factor(Ethnicity, levels = c(0, 1), 
+                            labels = c("PR", "Other")),
+         Urban = factor(Urban, levels = c(1, 0), 
+                        labels = c("Urban", "Rural")),
+         Smoking_status = factor(Smoking_status, levels = c(0,1,2),
+                                 labels = c("Never", "Former", "Current")),
+         Drinking_status = factor(Drinking_status, levels = c(0,1,2),
+                                  labels = c("Never", "Former", "Current")),
+         Physical_activity = factor(Physical_activity, levels = c(1,0),
+                                    labels = c("Active", "Sedentary")),
+         Food_security = factor(Food_security, levels = c(1, 0), 
+                                labels = c("Secure", "Insecure")),
+         WIC_SNAP = factor(WIC_SNAP, levels = c(0, 1),
+                           labels = c("No", "Yes")),
+         Depression = factor(Depression, levels = c(0,1), 
+                             labels = c("None/Mild", "Moderate/Severe")),
+         Anxiety = factor(Anxiety, levels = c(0,1),
+                          labels = c("None/Mild", "Moderate/Severe")))
+
+
 ### Unweighted logistic regression
-regr_dat <- as.data.frame(cbind(
-  restrict_data, 
-  dbh_class = factor(res_unwt$estimates$c_all)))
+
+## Full model with all covariates, no interactions, no subsetting
+# Remove NAs and center continuous variables
+svy_data_no_subset <- svy_data %>%
+  drop_na(hypertension, diabetes, high_cholesterol, 
+          Age, Sex, Educ, Inc_hh, Ethnicity, Urban, Physical_activity, 
+          Smoking_status, Drinking_status, Food_security, WIC_SNAP, 
+          Social_support, Perceived_stress, Depression, Anxiety) %>%
+  # Center continuous variables 
+  mutate(Age_cent = Age - mean(Age, na.rm = TRUE), 
+         Social_support_cent = Social_support - 
+           mean(Social_support, na.rm = TRUE),
+         Perceived_stress_cent = Perceived_stress - 
+           mean(Perceived_stress, na.rm = TRUE))
+
 # Diabetes
-fit_t2d <- glm(diabetes ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban, 
-            data = regr_dat, family = binomial())
+t2d_formula <- as.formula(
+  paste0("diabetes ~ dbh_class",
+         "+ Age_cent + Sex + Educ + Inc_hh + Ethnicity + Urban ",
+         "+ Physical_activity + Smoking_status + Drinking_status +", 
+         "hypertension + high_cholesterol", " + Food_security",
+         "+ WIC_SNAP + Social_support_cent + Perceived_stress_cent",
+         "+ Depression + Anxiety"))
+fit_t2d <- glm(t2d_formula, data = svy_data_no_subset, family = binomial())
+
 # Hypertension
-fit_hyp <- glm(hypertension ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban + 
-            Physical_activity + Smoking_status + Food_security, 
-            data = regr_dat, family = binomial())
+htn_formula <- as.formula(
+  paste0("hypertension ~ dbh_class",
+         "+ Age_cent + Sex + Educ + Inc_hh + Ethnicity + Urban ",
+         "+ Physical_activity + Smoking_status + Drinking_status +", 
+         "diabetes + high_cholesterol", " + Food_security",
+         "+ WIC_SNAP + Social_support_cent + Perceived_stress_cent",
+         "+ Depression + Anxiety"))
+fit_htn <- glm(htn_formula, data = svy_data_no_subset, family = binomial())
+
 # High cholesterol
-fit_chol <- glm(high_cholesterol ~ dbh_class + Age + Sex + Educ + Inc_hh + Urban, 
-            data = regr_dat, family = binomial())
+chol_formula <- as.formula(
+  paste0("high_cholesterol ~ dbh_class",
+         "+ Age_cent + Sex + Educ + Inc_hh + Ethnicity + Urban ",
+         "+ Physical_activity + Smoking_status + Drinking_status +", 
+         "hypertension + diabetes", " + Food_security",
+         "+ WIC_SNAP + Social_support_cent + Perceived_stress_cent",
+         "+ Depression + Anxiety"))
+fit_chol <- glm(chol_formula, data = svy_data_no_subset, family = binomial())
 
-# Create output plot
+# List of three outcome models
+mod_res_list <- list(fit_t2d, fit_htn, fit_chol)
 
-# Create table plot
+# # Save 
+# save(mod_res_list, 
+#      file = paste0(wd, res_dir, "unwt_t2d_htn_chol_fulllogreg.RData"))
+
+
+### Full model w/ all covariates, no interactions, subsetting to remove self-report
+## Diabetes
+# Subset sample
+svy_data_subset_t2d <- svy_data %>%
+  filter(t2d_categ != 3)
+# Remove NAs and center continuous variables
+svy_data_subset_t2d <- svy_data_subset_t2d %>%
+  drop_na(hypertension, diabetes, high_cholesterol, 
+          Age, Sex, Educ, Inc_hh, Ethnicity, Urban, Physical_activity, 
+          Smoking_status, Drinking_status, Food_security, WIC_SNAP, 
+          Social_support, Perceived_stress, Depression, Anxiety)%>%
+  # Center continuous variables 
+  mutate(Age_cent = Age - mean(Age, na.rm = TRUE), 
+         Social_support_cent = Social_support - 
+           mean(Social_support, na.rm = TRUE),
+         Perceived_stress_cent = Perceived_stress - 
+           mean(Perceived_stress, na.rm = TRUE))
+fit_t2d_unaware <- glm(t2d_formula, data = svy_data_subset_t2d, family = binomial())
+
+## Hypertension
+# Subset sample
+svy_data_subset_htn <- svy_data %>%
+  filter(htn_categ != 3)
+# Remove NAs and center continuous variables
+svy_data_subset_htn <- svy_data_subset_htn %>%
+  drop_na(hypertension, diabetes, high_cholesterol, 
+          Age, Sex, Educ, Inc_hh, Ethnicity, Urban, Physical_activity, 
+          Smoking_status, Drinking_status, Food_security, WIC_SNAP, 
+          Social_support, Perceived_stress, Depression, Anxiety)%>%
+  # Center continuous variables 
+  mutate(Age_cent = Age - mean(Age, na.rm = TRUE), 
+         Social_support_cent = Social_support - 
+           mean(Social_support, na.rm = TRUE),
+         Perceived_stress_cent = Perceived_stress - 
+           mean(Perceived_stress, na.rm = TRUE))
+fit_htn_unaware <- glm(htn_formula, data = svy_data_subset_htn, family = binomial())
+
+# High cholesterol
+# Subset sample
+svy_data_subset_chol <- svy_data %>%
+  filter(chol_categ != 3)
+# Remove NAs and center continuous variables
+svy_data_subset_chol <- svy_data_subset_chol %>%
+  drop_na(hypertension, diabetes, high_cholesterol, 
+          Age, Sex, Educ, Inc_hh, Ethnicity, Urban, Physical_activity, 
+          Smoking_status, Drinking_status, Food_security, WIC_SNAP, 
+          Social_support, Perceived_stress, Depression, Anxiety)%>%
+  # Center continuous variables 
+  mutate(Age_cent = Age - mean(Age, na.rm = TRUE), 
+         Social_support_cent = Social_support - 
+           mean(Social_support, na.rm = TRUE),
+         Perceived_stress_cent = Perceived_stress - 
+           mean(Perceived_stress, na.rm = TRUE))
+fit_chol_unaware <- glm(chol_formula, data = svy_data_subset_chol, family = binomial())
+
+# List of three outcome models
+mod_res_list_unaware <- list(fit_t2d_unaware, fit_htn_unaware, fit_chol_unaware)
+
+# # Save 
+# save(mod_res_list_unaware,
+#      file = paste0(wd, res_dir, "unwt_t2d_htn_chol_unaware_fulllogreg.RData"))
 
 
 #========== Run weighted regression models using csSampling package ============

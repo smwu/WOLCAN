@@ -282,6 +282,45 @@ summarize_parms <- function(fit_obj, quant_lb = 0.025, quant_ub = 0.975,
 }
 
 
+# Function to summarize output from `glm()` 
+# Inputs:
+#   fit_obj: Fit object resulting from a call to `wtd_logreg_wolcan()`
+#   quant_lb: CI lower bound quantile. Default is `0.025`.
+#   quant_ub: CI upper bound quantile. Default is `0.975`.
+#   round_digits: Number of digits to round to. Default is `3`. 
+#   parm_names: Boolean specifying if coefficient names should be outputted. 
+# Default is `TRUE`.
+#   exponentiate: Boolean specifying if results should be exponentiated to the 
+# odds scale (`TRUE`; default) or left on the log-odds scale (`FALSE`).
+# Output: Table of summarized regression coefficients
+summarize_parms_unwt <- function(fit_obj, quant_lb = 0.025, quant_ub = 0.975, 
+                            round_digits = 3, parm_names = TRUE, 
+                            exponentiate = TRUE) {
+  
+  means <- fit_obj$coefficients
+  ci <- stats::confint(fit_obj)
+  summ_fit <- summary(fit_obj)
+  p_vals <- summ_fit$coefficients[, 4]
+  summary_adj_parms <- as.data.frame(cbind(means, ci[, 1], ci[, 2], p_vals))
+  # Move intercept to the end
+  summary_adj_parms <- as.data.frame(rbind(summary_adj_parms[-1, ], 
+                                           summary_adj_parms[1, ]))
+  colnames(summary_adj_parms) <- c("Mean", paste0(quant_lb*100, "%"), 
+                                   paste0(quant_ub*100, "%"), "P-value")
+  
+  # Exponentiate to OR scale if specified
+  if (exponentiate) {
+    summary_adj_parms[, 1:3] <- exp(summary_adj_parms[, 1:3])
+  }
+  summary_adj_parms <- as.data.frame(round(summary_adj_parms, round_digits))
+  
+  if (parm_names) {
+    summary_adj_parms$Variable <- rownames(summary_adj_parms)
+  }
+  
+  return(summary_adj_parms)
+}
+
 # Table of estimated weights by covariates
 # Inputs:
 #   var_vec: String vector indicating variables over which to summarize.

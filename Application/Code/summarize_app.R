@@ -2,7 +2,7 @@
 # Plot and display results
 # Author: Stephanie Wu
 # Date created: 2024/09/30
-# Date updated: 2024/09/30
+# Date updated: 2024/11/15
 #=================================================
 
 library(baysc)
@@ -24,8 +24,10 @@ code_dir <- "Application/Code/"  # Code directory
 source(paste0(wd, code_dir, "app_functions.R"))
 
 # Load DBH results
-load(paste0(wd, res_dir, "cc_dbh_wolcan_results.RData"))
-load(paste0(wd, res_dir, "cc_dbh_wolcan_weights.RData"))
+# load(paste0(wd, res_dir, "cc_dbh_wolcan_results.RData"))
+# load(paste0(wd, res_dir, "cc_dbh_wolcan_weights.RData"))
+load(paste0(wd, res_dir, "no_varadj_cc_dbh_wolcan_results.RData"))
+load(paste0(wd, res_dir, "no_varadj_cc_dbh_wolcan_weights.RData"))
 
 #==================== Read in and prepare data =================================
 # Read in PRCS data
@@ -160,16 +162,27 @@ knitr::kable(wts_all, format = "latex", booktabs = TRUE)
 
 
 #================ Figure for dietary behavior patterns =========================
+    # # Set variance adjustment to NULL if it isn't already
+    # res$estimates_adjust <- NULL
+
 # Plot distribution of class prevalences
 baysc::plot_class_dist(res)
+# ggsave(filename = paste0(wd, "Tables_Figures/", "class_dist_plot.png"),
+#        width = 3000, height = 3500, units = "px", dpi = 700)
+
 # Traceplot for pi
 plot(res$estimates_adjust$pi_red[, 1], type = "l", ylim = c(0, 1))
+plot(res$estimates$pi_red[, 1], type = "l", ylim = c(0, 1))
 
-# Plot pattern probabilities horizontally
-plot_pattern_probs_wolcan(res = res, item_labels = item_labels, 
-                          class_title = class_title, 
-                          categ_title = categ_title,
-                          categ_labels = categ_labels)
+# Traceplot for theta
+plot(res$estimates_adjust$theta_red[, 1, 1, 1], type = "l", ylim = c(0, 1))
+plot(res$estimates$theta_red[, 1, 1, 1], type = "l", ylim = c(0, 1))
+
+# # Plot pattern probabilities horizontally
+# plot_pattern_probs_wolcan(res = res, item_labels = item_labels, 
+#                           class_title = class_title, 
+#                           categ_title = categ_title,
+#                           categ_labels = categ_labels)
 
 # Plot pattern probabilities vertically
 baysc::plot_pattern_probs(res = res, item_labels = item_labels, 
@@ -179,11 +192,11 @@ baysc::plot_pattern_probs(res = res, item_labels = item_labels,
   ggplot2::facet_wrap(factor(Item, labels = item_labels) ~ ., nrow = 5) + 
   theme(strip.text = element_text(size = 11),
         strip.background = element_rect(fill = "aliceblue"))
-# Save pattern probabilities
+# # Save pattern probabilities
 # ggsave(filename = paste0(wd, "Tables_Figures/", "pattern_probs_plot.png"),
 #        width = 8200, height = 6700, units = "px", dpi = 700)
 
-# Plot pattern profiles
+# Plot pattern profiles (USE NEW VERSION)
 plot_pattern_profiles(res = res, item_labels = item_labels, 
                       class_title = class_title, 
                       class_labels = c("Nutrition\nSensitive",
@@ -196,30 +209,6 @@ plot_pattern_profiles(res = res, item_labels = item_labels,
 # Save pattern profiles
 # ggsave(filename = paste0(wd, "Tables_Figures/", "pattern_profiles_plot.png"),
 #        width = 3800, height = 5600, units = "px", dpi = 700)
-
-
-### Plot patterns for the unweighted LCA model
-# Load model
-load(paste0(wd, res_dir, "Sept_20/agePRCS_unwt_cc_dbh_wolca_results.RData"))
-res_unwt <- res
-# Reorder classes to match weighted model ordering
-res_unwt <- baysc::reorder_classes(res = res_unwt, new_order = c(3, 4, 2, 1))
-# Plot pattern probabilities horizontally
-plot_pattern_probs_wolcan(res = res_unwt, item_labels = item_labels, 
-                          item_title = item_title,
-                          class_title = class_title, 
-                          categ_title = categ_title,
-                          categ_labels = categ_labels)
-# Plot pattern probabilities vertically
-baysc::plot_pattern_probs(res = res_unwt, item_labels = item_labels, 
-                          class_title = class_title, 
-                          categ_title = categ_title,
-                          categ_labels = categ_labels)
-# Plot pattern profiles
-baysc::plot_pattern_profiles(res = res_unwt, item_labels = item_labels, 
-                             class_title = class_title, 
-                             categ_title = categ_title,
-                             categ_labels = categ_labels)
 
 
 #================ Table of dietary behavior patterns by covariates =============
@@ -373,8 +362,8 @@ create_mod_plot_multiple(
         legend.text = element_text(size = 11),
         legend.position = "bottom",
         panel.spacing = unit(1, "lines"))  # add space between facets
-ggsave(filename = paste0(wd, "Tables_Figures/", "full_outcome_plot.png"), 
-       width = 5000, height = 4800, units = "px", dpi = 700)
+# ggsave(filename = paste0(wd, "Tables_Figures/", "full_outcome_plot.png"), 
+#        width = 5000, height = 4800, units = "px", dpi = 700)
 
 
 ### Create table displaying the non-subsetted and subsetted models for the full 
@@ -437,6 +426,467 @@ knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>%
 #   x[c(26, 1:3), "Post_Prob"]) 
 # knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>% 
 #   kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+
+
+### Create table displaying all covariate values for the non-subsetted and 
+### subsetted models for the full model with all covariates
+# Clean output for models
+digits <- 2
+df_full_no_subset <- lapply(summ_full_no_subset, function(x) {
+  x %>% mutate(Est_CI = paste0(format(round(Mean, digits), digits = digits), " (", 
+                               format(round(`2.5%`, digits), digits = digits), ", ",
+                               format(round(`97.5%`, digits), digits = digits), ")"),
+               Post_Prob = format(round(ifelse(`P(xi>0)` > 0.5, `P(xi>0)`,
+                                               `P(xi<0)`), digits), digits = digits)) 
+})
+df_full <- lapply(summ_full, function(x) {
+  x %>% mutate(Est_CI = paste0(format(round(Mean, digits), digits = digits), " (", 
+                               format(round(`2.5%`, digits), digits = digits), ", ",
+                               format(round(`97.5%`, digits), digits = digits), ")"),
+               Post_Prob = format(round(ifelse(`P(xi>0)` > 0.5, `P(xi>0)`,
+                                               `P(xi<0)`), digits), digits = digits)) 
+})
+df_both <- append(df_full_no_subset, df_full)
+names(df_both) <- c("t2d_no_subset", "htn_no_subset", "chol_no_subset",
+                    "t2d", "htn", "chol")
+# Create output table
+pattern_labels <- c("Nutrition-Sensitive (Ref)", "Social Eating",
+                    "Out-of-Home Eating", "Nutrition-Insensitive")
+tab_dbh_disease <- as.data.frame(matrix(NA, nrow = 10, ncol = 7))
+tab_dbh_disease[, 1] <- c("Full Sample Model",
+                          pattern_labels,
+                          "Subsetted to Exclude Self-Reported Diagnosis",
+                          pattern_labels)
+colnames(tab_dbh_disease) <- c("Covariate", "Est_CI_t2d", "Post_prob_t2d", 
+                               "Est_CI_htn", "Post_prob_htn", 
+                               "Est_CI_chol", "Post_prob_chol")
+# No subset results
+tab_dbh_disease[2:5, c(2, 4, 6)] <- sapply(df_full_no_subset, function(x) 
+  x[c(28, 1:3), "Est_CI"]) 
+tab_dbh_disease[2:5, c(3, 5, 7)] <- sapply(df_full_no_subset, function(x) 
+  x[c(28, 1:3), "Post_Prob"]) 
+# Subset results
+tab_dbh_disease[7:10, c(2, 4, 6)] <- sapply(df_full, function(x) 
+  x[c(28, 1:3), "Est_CI"]) 
+tab_dbh_disease[7:10, c(3, 5, 7)] <- sapply(df_full, function(x) 
+  x[c(28, 1:3), "Post_Prob"]) 
+
+tab_cov_full_t2d <- df_full_no_subset[[1]]
+tab_cov_full_t2d <- tab_cov_full_t2d[c(28, 1:25), 
+                                     c("Variable", "Est_CI", "Post_Prob")]
+tab_cov_full_t2d$Variable[1] <- "Intercept"
+rownames(tab_cov_full_t2d) <- NULL
+# Display table
+knitr::kable(tab_cov_full_t2d, format = "html", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+
+# Display table
+knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+
+
+#================ UNWEIGHTED dietary behavior patterns =========================
+
+reorder_classes <- function (res, new_order) {
+  if (!inherits(res, c("swolca", "wolca"))) {
+    stop("res must be an object of class `swolca` or `wolca`, resulting \n         from a call to one of these functions")
+  } else if ((inherits(res, "wolca")) & !is.null(res$estimates_svyglm)) {
+    warning(paste0("For WOLCA, reordering of classes should be done before ", 
+                   "calling wolca_svyglm(). res$estimates_svyglm should be NULL ", 
+                   "prior to running this function."))
+  }
+  ### CHANGED
+  if (any(sort(unique(new_order)) != sort(unique(res$estimates$c_all)))) {
+    stop("New ordering must have same number of classes and unique values as old ordering.")
+  }
+  res_new <- res
+  K <- length(new_order)
+  ### END CHANGED
+  if (!is.null(res$estimates_adjust)) {
+    ### CHANGED
+    res_new$estimates_adjust$pi_red <- res$estimates_adjust$pi_red[, 
+                                                                   new_order, drop = FALSE]
+    res_new$estimates_adjust$theta_red <- res$estimates_adjust$theta_red[, 
+                                                                         , new_order, , drop = FALSE]
+    res_new$estimates_adjust$pi_med <- res$estimates_adjust$pi_med[new_order, drop = FALSE]
+    res_new$estimates_adjust$theta_med <- res$estimates_adjust$theta_med[, 
+                                                                         new_order, , drop = FALSE]
+    
+    for (i in 1:K) {
+      res_new$estimates_adjust$c_all[res$estimates_adjust$c_all == 
+                                       new_order[i]] <- i
+    }
+    ### END CHANGED
+    if (is(res, "swolca")) {
+      ### CHANGED
+      res_new$estimates_adjust$xi_red <- res$estimates_adjust$xi_red[, 
+                                                                     new_order, , drop = FALSE]
+      res_new$estimates_adjust$xi_med <- res$estimates_adjust$xi_med[new_order, , drop = FALSE]
+    }
+  }
+  else {
+    res_new$estimates$pi_red <- res$estimates$pi_red[, new_order, drop = FALSE]
+    res_new$estimates$theta_red <- res$estimates$theta_red[, 
+                                                           , new_order, , drop = FALSE]
+    res_new$estimates$pi_med <- res$estimates$pi_med[new_order, drop = FALSE]
+    res_new$estimates$theta_med <- res$estimates$theta_med[, 
+                                                           new_order, , drop = FALSE]
+    for (i in 1:K) {
+      res_new$estimates$c_all[res$estimates$c_all == new_order[i]] <- i
+    }
+    if (is(res, "swolca")) {
+      res_new$estimates$xi_red <- res$estimates$xi_red[, 
+                                                       new_order, , drop = FALSE]
+      res_new$estimates$xi_med <- res$estimates$xi_med[new_order, , drop = FALSE]
+      ### END CHANGED
+    }
+  }
+  return(res_new)
+}
+
+plot_pattern_profiles <- function(res, item_labels = NULL, item_title = "Item",
+                                  categ_labels = NULL, 
+                                  categ_title = "Consumption Level",
+                                  class_labels = NULL, 
+                                  class_title = "Dietary Pattern", ...) {
+  
+  # Check object class
+  if (!(class(res) %in% c("swolca", "wolca"))) {
+    stop("res must be an object of class `swolca` or `wolca`, resulting 
+         from a call to one of these functions")
+  }
+  
+  # Obtain theta estimates
+  if (!is.null(res$estimates_adjust)) {
+    # Adjusted estimates
+    est_item_probs <- res$estimates_adjust$theta_med
+  } else {
+    # Unadjusted estimates 
+    est_item_probs <- res$estimates$theta_med
+  }
+  
+  # Obtain theta modes as the category with highest probability for each item
+  mode_item_probs <- as.data.frame(apply(est_item_probs, c(1, 2), which.max))
+  
+  # Define item, latent class, and category names if not specified
+  if (is.null(item_labels)) {
+    item_labels <- 1:res$data_vars$J
+  } else if (length(item_labels) != res$data_vars$J) {
+    stop(paste0("length of item_labels must equal the number of exposure items, J = ",
+                res$data_vars$J))
+  }
+  K <- dim(mode_item_probs)[2]
+  if (is.null(class_labels)) {
+    class_labels <- 1:K
+  } else if (length(class_labels) != K) {
+    stop(paste0("length of class_labels must equal the number of latent classes, K = ", K))
+  }
+  if (is.null(categ_labels)) {
+    categ_labels <- 1:res$data_vars$R
+  } else if (length(categ_labels) != res$data_vars$R) {
+    stop(paste0("length of categ_labels must equal the number of exposure categories, R = ", 
+                res$data_vars$R))
+  }
+  rownames(mode_item_probs) <- item_labels
+  colnames(mode_item_probs) <- class_labels
+  mode_item_probs$Item <- rownames(mode_item_probs)
+  
+  # Initialize variables to NULL to avoid global binding notes in R CMD check
+  Class <- Item <- Level <- NULL
+  
+  # Create plot
+  mode_plot <- mode_item_probs %>% 
+    tidyr::gather("Class", "Level", -Item) %>%
+    mutate(Class = factor(Class, levels = class_labels))  ## ADDED!
+  mode_plot %>% ggplot2::ggplot(ggplot2::aes(x=Class, 
+                                             y=factor(Item, 
+                                                      levels = rev(item_labels)), 
+                                             fill = factor(Level))) + 
+    ggplot2::geom_tile(color="black", linewidth = 0.3) + 
+    ggplot2::scale_fill_brewer(type="seq", palette="RdYlBu", direction = -1,
+                               name = categ_title, labels = categ_labels) +
+    ggplot2::labs(x = class_title, y = item_title) +
+    ggplot2::theme_classic() +
+    ggplot2::scale_x_discrete() + 
+    ggplot2::theme(text = ggplot2::element_text(size = 15),
+                   axis.text.x = ggplot2::element_text(size = 12, color = "black"), 
+                   axis.text.y = ggplot2::element_text(size = 11, color = "black"),
+                   axis.title.x = ggplot2::element_text(size = 13, color = "black", face = "bold"),
+                   axis.title.y = ggplot2::element_text(size = 13, color = "black", face = "bold"),
+                   legend.title = ggplot2::element_text(size = 13, color = "black", face = "bold"),
+                   legend.text = ggplot2::element_text(size = 11, color = "black"),
+                   legend.position = "top")
+}
+
+
+# Load unweighted DBH results
+load(paste0(wd, res_dir, "agePRCS_unwt_cc_dbh_wolca_results.RData"))
+res_unwt <- res
+# Reorder classes to match weighted model ordering
+res_unwt <- reorder_classes(res = res_unwt, new_order = c(3, 4, 2, 1))
+
+# Plot distribution of class prevalences
+baysc::plot_class_dist(res = res_unwt)
+# ggsave(filename = paste0(wd, "Tables_Figures/", "unwt_class_dist_plot.png"), 
+#        width = 3000, height = 3500, units = "px", dpi = 700)
+
+# Traceplot for pi
+plot(res_unwt$estimates$pi_red[, 1], type = "l", ylim = c(0, 1))
+
+# Plot pattern probabilities vertically
+baysc::plot_pattern_probs(res = res_unwt, item_labels = item_labels, 
+                          class_title = class_title, y_title = item_title,
+                          categ_title = categ_title,
+                          categ_labels = categ_labels) + 
+  ggplot2::facet_wrap(factor(Item, labels = item_labels) ~ ., nrow = 5) + 
+  theme(strip.text = element_text(size = 11),
+        strip.background = element_rect(fill = "aliceblue"))
+# Save pattern probabilities
+# ggsave(filename = paste0(wd, "Tables_Figures/", "unwt_pattern_probs_plot.png"),
+#        width = 8200, height = 6700, units = "px", dpi = 700)
+
+# res_unwt$estimates$c_all <- factor(res_unwt$estimates$c_all, 
+#                                    levels = c(1, 2, 3, 4))
+
+# Plot pattern profiles
+plot_pattern_profiles(res = res_unwt, item_labels = item_labels, 
+                      class_title = class_title, 
+                      class_labels = c("Nutrition\nSensitive",
+                                       "Social\nEating",
+                                       "Out-of-Home\nEating",
+                                       "Nutrition\nInsensitive"),
+                      y_title = item_title,
+                      categ_title = categ_title,
+                      categ_labels = categ_labels)
+# Save pattern profiles
+# ggsave(filename = paste0(wd, "Tables_Figures/", "unwt_pattern_profiles_plot.png"),
+#        width = 3800, height = 5600, units = "px", dpi = 700)
+
+
+#=============== UNWEIGHTED outcome regression table and figure ================
+
+### Load in full models with all covariates, no interactions, no subsetting
+load(paste0(wd, res_dir, "unwt_t2d_htn_chol_fulllogreg.RData"))
+
+full_no_subset_mod_res_list <- mod_res_list
+
+# List of summarized models, exponentiated to OR scale
+summ_full_no_subset <- lapply(mod_res_list, function(x) 
+  summarize_parms_unwt(x, quant_lb = 0.025, quant_ub = 0.975, 
+                       exponentiate = TRUE))
+# Plot models
+create_mod_plot(summ_full_no_subset) 
+
+
+### Load in full models with all covariates, no interactions, subsetting to 
+### exclude self-reported diagnosis 
+load(paste0(wd, res_dir, "unwt_t2d_htn_chol_unaware_fulllogreg.RData"))
+
+full_mod_res_list <- mod_res_list_unaware
+
+# List of summarized models, exponentiated to OR scale
+summ_full <- lapply(mod_res_list_unaware, function(x) 
+  summarize_parms_unwt(x, quant_lb = 0.025, quant_ub = 0.975, 
+                       exponentiate = TRUE))
+# Plot models
+create_mod_plot(summ_full) 
+
+
+
+### Create facetted figure displaying the non-subsetted and subsetted models for 
+### the full model with all covariates
+create_mod_plot_multiple(
+  summ_mod_list_multiple = list(summ_full_no_subset, summ_full),
+  mod_labels = c("Not Subsetted", "Subsetted to Exclude \nSelf-Reported Diagnosis"),
+  legend_labels = c("Social Eating", "Out-of-Home Eating",
+                    "Nutrition-Insensitive")) + 
+  theme(strip.text = element_text(size = 11),
+        axis.title = element_text(size = 13),
+        axis.text = element_text(size = 11),
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 11),
+        legend.position = "bottom",
+        panel.spacing = unit(1, "lines"))  # add space between facets
+# ggsave(filename = paste0(wd, "Tables_Figures/", "unwt_full_outcome_plot.png"), 
+#        width = 5000, height = 4800, units = "px", dpi = 700)
+
+
+### Create table displaying the non-subsetted and subsetted models for the full 
+### model with all covariates
+# Clean output for models
+digits <- 2
+df_full_no_subset <- lapply(summ_full_no_subset, function(x) {
+  x %>% mutate(Est_CI = paste0(format(round(Mean, digits), digits = digits), " (", 
+                               format(round(`2.5%`, digits), digits = digits), ", ",
+                               format(round(`97.5%`, digits), digits = digits), ")"),
+               `P-value` = format(round(`P-value`, digits), digits = digits)) 
+})
+df_full <- lapply(summ_full, function(x) {
+  x %>% mutate(Est_CI = paste0(format(round(Mean, digits), digits = digits), " (", 
+                               format(round(`2.5%`, digits), digits = digits), ", ",
+                               format(round(`97.5%`, digits), digits = digits), ")"),
+               `P-value` = format(round(`P-value`, digits), digits = digits)) 
+})
+df_both <- append(df_full_no_subset, df_full)
+names(df_both) <- c("t2d_no_subset", "htn_no_subset", "chol_no_subset",
+                    "t2d", "htn", "chol")
+# Create output table
+pattern_labels <- c("Nutrition-Sensitive (Ref)", "Social Eating",
+                    "Out-of-Home Eating", "Nutrition-Insensitive")
+tab_dbh_disease <- as.data.frame(matrix(NA, nrow = 10, ncol = 7))
+tab_dbh_disease[, 1] <- c("Full Sample Model",
+                          pattern_labels,
+                          "Subsetted to Exclude Self-Reported Diagnosis",
+                          pattern_labels)
+colnames(tab_dbh_disease) <- c("Covariate", "Est_CI_t2d", "P_val_t2d", 
+                               "Est_CI_htn", "P_val_htn", 
+                               "Est_CI_chol", "P_val_chol")
+# No subset results
+tab_dbh_disease[2:5, c(2, 4, 6)] <- sapply(df_full_no_subset, function(x) 
+  x[c(26, 1:3), "Est_CI"]) 
+tab_dbh_disease[2:5, c(3, 5, 7)] <- sapply(df_full_no_subset, function(x) 
+  x[c(26, 1:3), "P-value"]) 
+# Subset results
+tab_dbh_disease[7:10, c(2, 4, 6)] <- sapply(df_full, function(x) 
+  x[c(26, 1:3), "Est_CI"]) 
+tab_dbh_disease[7:10, c(3, 5, 7)] <- sapply(df_full, function(x) 
+  x[c(26, 1:3), "P-value"]) 
+
+# Display table
+knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+
+
+
+#======================== Correlation between weight draws =====================
+
+# `get_cor_compare` compares the average pairwise correlation between different 
+# ways of sampling from the posterior predictive distribution of the weights
+# Inputs:
+#   wts_post: nxM matrix of posterior weights, where n is the sample size of the 
+# NPS and M is the number of MCMC samples that are preserved
+#   D: Number of draws to keep from the posterior weight distribution when 
+# propagating the uncertainty of the weights throughout the model
+# Outputs: A list containing the following elements:
+#   avg_cor_all: Average pairwise correlation using all samples from the 
+# posterior predictive weight distribution
+#   cor_avgs: Vector of the average pairwise correlations across 100 SRSs 
+# of D draws
+#   avg_cor_SRS: Average across `cor_avgs`
+#   dist_cor_SRS: Summary of `cor_avgs`
+#   avg_cor_quants: Average pairwise correlation for a quantile-based method to 
+# obtain the D draws 
+get_cor_compare <- function(wts_post, D) {
+  set.seed(1)
+  
+  # Obtain the correlation distribution for all posterior samples
+  cor_mat_all <- cor(wts_post)
+  dim(cor_mat_all)
+  cor_mat_all[1:5, 1:5]
+  cor_unique_all <- cor_mat_all[upper.tri(cor_mat_all)]
+  avg_cor_all <- round(mean(cor_unique_all), 3)
+  print(paste0("Average correlation across all samples: ", avg_cor_all))
+  
+  # Obtain the mean correlation using SRS to select D draws
+  # Try this 100 times
+  cor_avgs <- numeric(100)
+  for (i in 1:100) {
+    ind_SRS <- sample(1:ncol(wts_post), size = D)
+    wts_SRS <- wts_post[, ind_SRS]
+    cor_mat_SRS <- cor(wts_SRS)
+    cor_unique_SRS <- cor_mat_SRS[upper.tri(cor_mat_SRS)]
+    cor_avgs[i] <- mean(cor_unique_SRS)
+  }
+  avg_cor_SRS <- round(mean(cor_avgs), 3)
+  dist_cor_SRS <- summary(cor_avgs)
+  print(paste0("Average correlation for SRS for 100 simulations: ", avg_cor_SRS))
+  print("Distribution of correlations across 100 simulations:")
+  print(dist_cor_SRS)
+  
+  
+  # Obtain the mean correlation using stratified quantiles to select D draws
+  # Get quantiles of medians of weights posterior
+  col_meds <- c(apply(wts_post, 2, median))
+  cutoffs <- (seq(1, D, length.out = D) - 0.5) / D
+  med_quants <- stats::quantile(x = col_meds, probs = cutoffs)
+  wts_quants <- matrix(NA, nrow = nrow(wts_post), ncol = D)
+  for (d in 1:D) {
+    # Draw from weights posterior closest to quantile
+    draw <- which.min(abs(col_meds - med_quants[d]))
+    wts_quants[, d] <- c(wts_post[, draw])
+  }
+  cor_mat_quants <- cor(wts_quants)
+  cor_unique_quants <- cor_mat_quants[upper.tri(cor_mat_quants)]
+  avg_cor_quants <- round(mean(cor_unique_quants), 3)
+  print(paste0("Average correlation for quantiles: ", avg_cor_quants))
+  
+  return(list(avg_cor_all = avg_cor_all, cor_avgs = cor_avgs, 
+              avg_cor_SRS = avg_cor_SRS, dist_cor_SRS = dist_cor_SRS, 
+              avg_cor_quants = avg_cor_quants))
+}
+
+# Obtain correlations for D = 5, 10, 20, 100
+d5 <- get_cor_compare(wts_post = est_weights$wts_post, D = 5)
+d10 <- get_cor_compare(wts_post = est_weights$wts_post, D = 10)
+d20 <- get_cor_compare(wts_post = est_weights$wts_post, D = 20)
+d100 <- get_cor_compare(wts_post = est_weights$wts_post, D = 100)
+
+# Create dataframe including all vectors for the SRS scenario
+d_all <- data.frame(d5$cor_avgs, d10$cor_avgs, d20$cor_avgs, d100$cor_avgs)
+colnames(d_all) <- c("D=5", "D=10", "D=20", "D=100")
+
+# Convert to long format
+d_all_long <- d_all %>%
+  pivot_longer(cols = everything(), names_to = "Num_Draws", 
+               values_to = "Correlation")
+# Add in correlation when using all posterior samples
+d_all_long$cor_all <- d5$avg_cor_all
+# Add in correlation for the average SRS scenario, and for the quantile scenario
+d_all_long <- d_all_long %>%
+  mutate(
+    Num_Draws = factor(Num_Draws, levels = c("D=5", "D=10", "D=20", "D=100")),
+    # SRS average across 100 iterations
+    mean_SRS = case_when(
+      Num_Draws == "D=5" ~ d5$avg_cor_SRS,
+      Num_Draws == "D=10" ~ d10$avg_cor_SRS,
+      Num_Draws == "D=20" ~ d20$avg_cor_SRS,
+      Num_Draws == "D=100" ~ d100$avg_cor_SRS,
+      .default = NA
+    ),
+    # Quantile method
+    mean_quants = case_when(
+      Num_Draws == "D=5" ~ d5$avg_cor_quants,
+      Num_Draws == "D=10" ~ d10$avg_cor_quants,
+      Num_Draws == "D=20" ~ d20$avg_cor_quants,
+      Num_Draws == "D=100" ~ d100$avg_cor_quants,
+      .default = NA
+    )
+  )
+
+# Create plot displaying results
+d_all_long %>%
+  ggplot(aes(x = Correlation, fill = Num_Draws)) + 
+  geom_histogram(bins = 20) +
+  facet_wrap(. ~ Num_Draws, nrow = 2) + 
+  geom_vline(aes(xintercept = mean_SRS, color = "Mean across SRS Draws"), 
+             linetype = "dashed") + 
+  geom_vline(aes(xintercept = mean_quants, color = "Quantile Draws"), 
+             linetype = "dashed") + 
+  geom_vline(aes(xintercept = cor_all, color = "All Posterior Samples"), 
+             linetype = "dashed") + 
+  facet_wrap(~ Num_Draws, nrow = 2) + 
+  scale_color_manual(values = c("Mean across SRS Draws" = "red", 
+                                "Quantile Draws" = "orange",
+                                "All Posterior Samples" = "black")) +
+  theme_bw() +
+  labs(color = "Type of Sampling for Draws") + 
+  xlab("Correlation for 100 SRS Draws") + ylab("Frequency") 
+
+
+# plot(wts_post[, 1], wts_post[, 1000])
+# cor(wts_post[, 1], wts_post[, 1000])
+# plot(wts_post[, 900], wts_post[, 1000])
+# cor(wts_post[, 900], wts_post[, 1000])
 
 #======================== Old code =============================================
 # ### Variable importance plot
