@@ -15,7 +15,7 @@ library(BART)  # BART
 
 # Set directories
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
-wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
+wd <- "/n/netscratch/stephenson_lab/Lab/stephwu18/WOLCAN/"
 data_dir <- "Data/"    # Data directory
 res_dir <- "Results/"  # Results directory
 code_dir <- "Summary_Code/"  # Model code directory

@@ -2,7 +2,7 @@
 # Generate population and sample data for NPSWOLCA
 # Author: Stephanie Wu
 # Date created: 2024/04/16
-# Date updated: 2024/05/29
+# Date updated: 2025/11/14
 #=================================================
 
 rm(list = ls())
@@ -12,7 +12,7 @@ library(baysc) # source functions from baysc package
 library(tidyverse) # data wrangling
 # library(baysc)  # swolca and data generation
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
-wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
+wd <- "/n/netscratch/stephenson_lab/Lab/stephwu18/WOLCAN/"
 data_dir <- "Data/"                 # Data directory
 res_dir <- "Results/"               # Results directory
 code_dir <- "Simulation_Code/"      # Simulation code directory

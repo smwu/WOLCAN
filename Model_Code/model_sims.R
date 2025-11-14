@@ -2,7 +2,7 @@
 # Create pseudo-weights and run WOLCAN model
 # Author: Stephanie Wu
 # Date created: 2024/04/16
-# Date updated: 2024/07/10
+# Date updated: 2025/11/14
 #=================================================
 
 # Read in two command line arguments
@@ -36,7 +36,7 @@ library(RcppTN)
 
 # Set directories
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
-wd <- "/n/holyscratch01/stephenson_lab/Users/stephwu18/WOLCAN/"
+wd <- "/n/netscratch/stephenson_lab/Lab/stephwu18/WOLCAN/"
 data_dir <- "Data/"    # Data directory
 res_dir <- "Results/"  # Results directory
 code_dir <- "Model_Code/"  # Model code directory
