@@ -2,7 +2,7 @@
 # Plot and display results
 # Author: Stephanie Wu
 # Date created: 2024/09/30
-# Date updated: 2024/11/15
+# Date updated: 2025/05/02
 #=================================================
 
 library(baysc)
@@ -12,6 +12,7 @@ library(knitr)
 library(kableExtra)
 library(tidyverse)
 library(ggpubr)
+library(brms)
 
 # Directories
 wd <- "~/Documents/GitHub/WOLCAN/"  # Working directory
@@ -52,6 +53,32 @@ restrict_data <- prospect_cleaned %>%
 
 item_labels <- colnames(prospect_dbh)[-1]
 item_labels[25] <- "dysfunct_weight_loss"
+item_labels <- c("Purchase Person", "Purchase Location", "Purchase Freq", 
+                 "Cook Person", "Breakfast Freq", "Lunch Freq", 
+                 "Dinner Freq", "Snack Freq", "Fast Food Freq", 
+                 "Restaurant Freq", "Take Out Freq", 
+                 "Food Truck Freq", "Cafe Bakery Freq", 
+                 "Party Freq", "Meal Alone Freq", "Meal TV Freq", 
+                 "Diet Quality", "Meal Healthy", "Diet Acculturation", 
+                 "Control Salt", "Control Fat", "Control Carbs Sugars", 
+                 "Control Portions", "Count Calories", 
+                 "Dysfunct Weight Loss", "Vitamins", "Probiotics", 
+                 "Check Weight", "Food Guide", "Nutr Panel Freq", 
+                 "Nutr Info Freq", "Local Food Freq", 
+                 "Buy Organic Freq", "Water Type", "Plant-Based Diet")
+item_labels2 <- c("Purchase Person", "Purchase Location", "Purchase Frequency", 
+                 "Cook Person", "Breakfast Frequency", "Lunch Frequency", 
+                 "Dinner Frequency", "Snack Frequency", "Fast Food Frequency", 
+                 "Restaurant Frequency", "Take Out Frequency", 
+                 "Food Truck Frequency", "Cafe Bakery Frequency", 
+                 "Party Frequency", "Meal Alone Frequency", "Meal TV Frequency", 
+                 "Diet Quality", "Meal Healthy", "Dietary Acculturation", 
+                 "Control Salt", "Control Fat", "Control Carbs Sugars", 
+                 "Control Portions", "Count Calories", 
+                 "Dysfunctional Weight Loss", "Vitamins", "Probiotics", 
+                 "Check Weight", "Food Guide", "Nutritional Panel Frequency", 
+                 "Nutritional Info Frequency", "Local Food Frequency", 
+                 "Buy Organic Frequency", "Water Type", "Plant-Based Diet")
 item_title <- "Risk Level Probability"
 class_title <- "Dietary Behavior Pattern"
 categ_title <- "Risk Level"
@@ -161,6 +188,59 @@ knitr::kable(wts_all) %>%
 knitr::kable(wts_all, format = "latex", booktabs = TRUE)
 
 
+
+#================ Table of dietary behavior category proportions ===============
+
+# Create dataframe of DBH responses and convert to factors
+dbh_raw <- as.data.frame(res$data_vars$x_mat)
+dbh_raw <- dbh_raw %>%
+  mutate_all(as.factor)
+
+# Specify all DBH variables for calculating proportions
+dbh_var_vec <- colnames(dbh_raw)
+# Proportions in sample
+dbh_prop_samp <- get_mean_props_wolcan(var_vec = dbh_var_vec, 
+                                       wts = samp_data$weight, 
+                                       data = dbh_raw, digits = 1)
+# Estimated proportions in population, using weights
+dbh_prop_pop <- get_mean_props_wolcan(var_vec = dbh_var_vec, 
+                                      wts = restrict_weights$weight, 
+                                      data = dbh_raw, digits = 1)
+# Combine all together into one table
+dbh_prop_all <- dbh_prop_samp %>% 
+  dplyr::left_join(dbh_prop_pop, by = join_by(Variable, Level),
+                   suffix = c("_samp", "_pop"))
+# Display table
+knitr::kable(dbh_prop_all) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+
+# Latex version
+knitr::kable(dbh_prop_all, format = "latex", booktabs = TRUE)
+
+
+## Sanity checks: manual calculation
+# Convert to long format with columns for variable and value
+dbh_long <- dbh_raw %>% 
+  pivot_longer(everything(), names_to = "dbh_var", values_to = "value") %>%
+  mutate(dbh_var = factor(dbh_var, levels = colnames(dbh_raw)))
+# Check all values are 1, 2, or 3
+table(dbh_long$value)
+# Calculate number of each value for each variable
+dbh_prop <- dbh_long %>% 
+  group_by(dbh_var) %>%
+  summarise(n_1 = sum(value == 1), n_2 = sum(value == 2), n_3 = sum(value == 3))
+# Calculate proportions of each value for each variable
+dbh_prop <- dbh_prop %>%
+  group_by(dbh_var) %>%
+  summarise(n = sum(c(n_1, n_2, n_3)),  # total sample size
+            n_1 = n_1, n_2 = n_2, n_3 = n_3,
+            prop_1 = n_1 / n, prop_2 = n_2 / n, prop_3 = n_3 / n)
+
+# Sanity check using furniture package
+dbh_prop[1:2, ]
+furniture::table1(dbh_raw, c(1:2))
+
+
 #================ Figure for dietary behavior patterns =========================
     # # Set variance adjustment to NULL if it isn't already
     # res$estimates_adjust <- NULL
@@ -197,18 +277,18 @@ baysc::plot_pattern_probs(res = res, item_labels = item_labels,
 #        width = 8200, height = 6700, units = "px", dpi = 700)
 
 # Plot pattern profiles (USE NEW VERSION)
-plot_pattern_profiles(res = res, item_labels = item_labels, 
+plot_pattern_profiles(res = res, item_labels = item_labels2, 
                       class_title = class_title, 
-                      class_labels = c("Nutrition\nSensitive",
+                      class_labels = c("Nutrition-\nAware",
                                                  "Social\nEating",
-                                                 "Out-of-Home\nEating",
-                                                 "Nutrition\nInsensitive"),
+                                                 "Away-from-\nHome Eating",
+                                                 "Nutrition-\nUnaware"),
                       y_title = item_title,
                       categ_title = categ_title,
                       categ_labels = categ_labels)
-# Save pattern profiles
+# # Save pattern profiles
 # ggsave(filename = paste0(wd, "Tables_Figures/", "pattern_profiles_plot.png"),
-#        width = 3800, height = 5600, units = "px", dpi = 700)
+#        width = 4200, height = 5600, units = "px", dpi = 700)
 
 
 #================ Table of dietary behavior patterns by covariates =============
@@ -286,66 +366,8 @@ create_mod_plot(summ_mod_list)
 
 
 
-# ### Core, no interactions, no subset
-# # List of model paths to load
-# mod_names_list <- list(paste0(wd, res_dir, "t2d_corelogreg.RData"),
-#                        paste0(wd, res_dir, "htn_corelogreg.RData"),
-#                        paste0(wd, res_dir, "chol_corelogreg.RData"))
-# # List of loaded models
-# mod_res_list <- list()
-# for (i in 1:length(mod_names_list)) {
-#   load(mod_names_list[[i]])
-#   mod_res_list[[i]] <- wtd_logreg_res
-# }
-# core_no_subset_mod_res_list <- mod_res_list
-# # List of summarized models
-# summ_mod_list <- lapply(mod_res_list, function(x) 
-#   summarize_parms(x, quant_lb = 0.025, quant_ub = 0.975, exponentiate = TRUE))
-# # Plot models
-# create_mod_plot(summ_mod_list)
-# 
-# 
-# ### Core, no interactions
-# # List of model paths to load
-# mod_names_list <- list(paste0(wd, res_dir, "t2d_unaware_corelogreg.RData"),
-#                        paste0(wd, res_dir, "htn_unaware_corelogreg.RData"),
-#                        paste0(wd, res_dir, "chol_unaware_corelogreg.RData"))
-# # List of loaded models
-# mod_res_list <- list()
-# for (i in 1:length(mod_names_list)) {
-#   load(mod_names_list[[i]])
-#   mod_res_list[[i]] <- wtd_logreg_res
-# }
-# core_mod_res_list <- mod_res_list
-# # List of summarized models
-# summ_mod_list <- lapply(mod_res_list, function(x) 
-#   summarize_parms(x, quant_lb = 0.025, quant_ub = 0.975, exponentiate = TRUE))
-# # Plot models
-# create_mod_plot(summ_mod_list)
-# 
-# 
-# ### Marginal
-# # List of model paths to load
-# mod_names_list <- list(paste0(wd, res_dir, "t2d_unaware_marglogreg.RData"),
-#                        paste0(wd, res_dir, "htn_unaware_marglogreg.RData"),
-#                        paste0(wd, res_dir, "chol_unaware_marglogreg.RData"))
-# # List of loaded models
-# mod_res_list <- list()
-# for (i in 1:length(mod_names_list)) {
-#   load(mod_names_list[[i]])
-#   mod_res_list[[i]] <- wtd_logreg_res
-# }
-# # List of summarized models
-# summ_mod_list <- lapply(mod_res_list, function(x) 
-#   summarize_parms(x, quant_lb = 0.025, quant_ub = 0.975, exponentiate = TRUE))
-# # Plot models
-# create_mod_plot(summ_mod_list)
-# marg_mod_res_list <- mod_res_list
-
-
-
 ### Create facetted figure displaying the non-subsetted and subsetted models for 
-### the full model with all covariates
+### the main covariates of interest
 summ_full_no_subset <- lapply(full_no_subset_mod_res_list, function(x) 
   summarize_parms(x, quant_lb = 0.025, quant_ub = 0.975, exponentiate = TRUE))
 summ_full <- lapply(full_mod_res_list, function(x) 
@@ -353,8 +375,8 @@ summ_full <- lapply(full_mod_res_list, function(x)
 create_mod_plot_multiple(
   summ_mod_list_multiple = list(summ_full_no_subset, summ_full),
   mod_labels = c("Not Subsetted", "Subsetted to Exclude \nSelf-Reported Diagnosis"),
-  legend_labels = c("Social Eating", "Out-of-Home Eating",
-                    "Nutrition-Insensitive")) + 
+  legend_labels = c("Social Eating", "Away-from-Home Eating",
+                    "Nutrition-Unaware")) + 
   theme(strip.text = element_text(size = 11),
         axis.title = element_text(size = 13),
         axis.text = element_text(size = 11),
@@ -366,122 +388,162 @@ create_mod_plot_multiple(
 #        width = 5000, height = 4800, units = "px", dpi = 700)
 
 
-### Create table displaying the non-subsetted and subsetted models for the full 
-### model with all covariates
+### Create table displaying the non-subsetted and subsetted models for the main 
+### covariates of interest
 # Clean output for models
 digits <- 2
 df_full_no_subset <- lapply(summ_full_no_subset, function(x) {
   x %>% mutate(Est_CI = paste0(format(round(Mean, digits), digits = digits), " (", 
                                format(round(`2.5%`, digits), digits = digits), ", ",
                                format(round(`97.5%`, digits), digits = digits), ")"),
-               Post_Prob = format(round(ifelse(`P(xi>0)` > 0.5, `P(xi>0)`,
-                                               `P(xi<0)`), digits), digits = digits)) 
+               # Changed to display Type S error
+               S_Error = format(round(ifelse(`P(xi>0)` < 0.5, `P(xi>0)`,
+                                             `P(xi<0)`), digits), digits = digits))
+               # Post_Prob = format(round(ifelse(`P(xi>0)` > 0.5, `P(xi>0)`,
+               #                                 `P(xi<0)`), digits), digits = digits)) 
 })
 df_full <- lapply(summ_full, function(x) {
   x %>% mutate(Est_CI = paste0(format(round(Mean, digits), digits = digits), " (", 
                                format(round(`2.5%`, digits), digits = digits), ", ",
                                format(round(`97.5%`, digits), digits = digits), ")"),
-               Post_Prob = format(round(ifelse(`P(xi>0)` > 0.5, `P(xi>0)`,
-                                               `P(xi<0)`), digits), digits = digits)) 
+               # Changed to display Type S error
+               S_Error = format(round(ifelse(`P(xi>0)` < 0.5, `P(xi>0)`,
+                                             `P(xi<0)`), digits), digits = digits))
+               # Post_Prob = format(round(ifelse(`P(xi>0)` > 0.5, `P(xi>0)`,
+               #                                 `P(xi<0)`), digits), digits = digits)) 
 })
 df_both <- append(df_full_no_subset, df_full)
 names(df_both) <- c("t2d_no_subset", "htn_no_subset", "chol_no_subset",
                     "t2d", "htn", "chol")
 # Create output table
-pattern_labels <- c("Nutrition-Sensitive (Ref)", "Social Eating",
-                    "Out-of-Home Eating", "Nutrition-Insensitive")
+pattern_labels <- c("Nutrition-Aware (Ref)", "Social Eating",
+                    "Away-from-Home Eating", "Nutrition-Unaware")
 tab_dbh_disease <- as.data.frame(matrix(NA, nrow = 10, ncol = 7))
 tab_dbh_disease[, 1] <- c("Full Sample Model",
                           pattern_labels,
                           "Subsetted to Exclude Self-Reported Diagnosis",
                           pattern_labels)
-colnames(tab_dbh_disease) <- c("Covariate", "Est_CI_t2d", "Post_prob_t2d", 
-                               "Est_CI_htn", "Post_prob_htn", 
-                               "Est_CI_chol", "Post_prob_chol")
+colnames(tab_dbh_disease) <- c("Covariate", "Est_CI_t2d", "S_error_t2d", 
+                               "Est_CI_htn", "S_error_htn", 
+                               "Est_CI_chol", "S_error_chol")
 # No subset results
 tab_dbh_disease[2:5, c(2, 4, 6)] <- sapply(df_full_no_subset, function(x) 
   x[c(28, 1:3), "Est_CI"]) 
 tab_dbh_disease[2:5, c(3, 5, 7)] <- sapply(df_full_no_subset, function(x) 
-  x[c(28, 1:3), "Post_Prob"]) 
+  x[c(28, 1:3), "S_Error"]) 
 # Subset results
 tab_dbh_disease[7:10, c(2, 4, 6)] <- sapply(df_full, function(x) 
   x[c(28, 1:3), "Est_CI"]) 
 tab_dbh_disease[7:10, c(3, 5, 7)] <- sapply(df_full, function(x) 
-  x[c(28, 1:3), "Post_Prob"]) 
+  x[c(28, 1:3), "S_Error"]) 
 
 # Display table
+knitr::kable(tab_dbh_disease, format = "html", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+
+# Latex
 knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>% 
   kableExtra::kable_classic(full_width = F, html_font = "Cambria")
 
-
-# # With Intercept instead of b_Intercept
-# tab_dbh_disease[2:5, c(2, 4, 6)] <- sapply(df_full_no_subset, function(x) 
-#   x[c(26, 1:3), "Est_CI"]) 
-# tab_dbh_disease[2:5, c(3, 5, 7)] <- sapply(df_full_no_subset, function(x) 
-#   x[c(26, 1:3), "Post_Prob"]) 
-# # Subset results
-# tab_dbh_disease[7:10, c(2, 4, 6)] <- sapply(df_full, function(x) 
-#   x[c(26, 1:3), "Est_CI"]) 
-# tab_dbh_disease[7:10, c(3, 5, 7)] <- sapply(df_full, function(x) 
-#   x[c(26, 1:3), "Post_Prob"]) 
-# knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>% 
-#   kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+  # # With Intercept instead of b_Intercept
+  # tab_dbh_disease[2:5, c(2, 4, 6)] <- sapply(df_full_no_subset, function(x) 
+  #   x[c(26, 1:3), "Est_CI"]) 
+  # tab_dbh_disease[2:5, c(3, 5, 7)] <- sapply(df_full_no_subset, function(x) 
+  #   x[c(26, 1:3), "Post_Prob"]) 
+  # # Subset results
+  # tab_dbh_disease[7:10, c(2, 4, 6)] <- sapply(df_full, function(x) 
+  #   x[c(26, 1:3), "Est_CI"]) 
+  # tab_dbh_disease[7:10, c(3, 5, 7)] <- sapply(df_full, function(x) 
+  #   x[c(26, 1:3), "Post_Prob"]) 
+  # knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>% 
+  #   kableExtra::kable_classic(full_width = F, html_font = "Cambria")
 
 
 ### Create table displaying all covariate values for the non-subsetted and 
-### subsetted models for the full model with all covariates
-# Clean output for models
-digits <- 2
-df_full_no_subset <- lapply(summ_full_no_subset, function(x) {
-  x %>% mutate(Est_CI = paste0(format(round(Mean, digits), digits = digits), " (", 
-                               format(round(`2.5%`, digits), digits = digits), ", ",
-                               format(round(`97.5%`, digits), digits = digits), ")"),
-               Post_Prob = format(round(ifelse(`P(xi>0)` > 0.5, `P(xi>0)`,
-                                               `P(xi<0)`), digits), digits = digits)) 
-})
-df_full <- lapply(summ_full, function(x) {
-  x %>% mutate(Est_CI = paste0(format(round(Mean, digits), digits = digits), " (", 
-                               format(round(`2.5%`, digits), digits = digits), ", ",
-                               format(round(`97.5%`, digits), digits = digits), ")"),
-               Post_Prob = format(round(ifelse(`P(xi>0)` > 0.5, `P(xi>0)`,
-                                               `P(xi<0)`), digits), digits = digits)) 
-})
-df_both <- append(df_full_no_subset, df_full)
-names(df_both) <- c("t2d_no_subset", "htn_no_subset", "chol_no_subset",
-                    "t2d", "htn", "chol")
-# Create output table
-pattern_labels <- c("Nutrition-Sensitive (Ref)", "Social Eating",
-                    "Out-of-Home Eating", "Nutrition-Insensitive")
-tab_dbh_disease <- as.data.frame(matrix(NA, nrow = 10, ncol = 7))
-tab_dbh_disease[, 1] <- c("Full Sample Model",
-                          pattern_labels,
-                          "Subsetted to Exclude Self-Reported Diagnosis",
-                          pattern_labels)
-colnames(tab_dbh_disease) <- c("Covariate", "Est_CI_t2d", "Post_prob_t2d", 
-                               "Est_CI_htn", "Post_prob_htn", 
-                               "Est_CI_chol", "Post_prob_chol")
-# No subset results
-tab_dbh_disease[2:5, c(2, 4, 6)] <- sapply(df_full_no_subset, function(x) 
-  x[c(28, 1:3), "Est_CI"]) 
-tab_dbh_disease[2:5, c(3, 5, 7)] <- sapply(df_full_no_subset, function(x) 
-  x[c(28, 1:3), "Post_Prob"]) 
-# Subset results
-tab_dbh_disease[7:10, c(2, 4, 6)] <- sapply(df_full, function(x) 
-  x[c(28, 1:3), "Est_CI"]) 
-tab_dbh_disease[7:10, c(3, 5, 7)] <- sapply(df_full, function(x) 
-  x[c(28, 1:3), "Post_Prob"]) 
+### subsetted models for the full model with ALL covariates
+tab_dbh_outcome_all_list <- list()
 
-tab_cov_full_t2d <- df_full_no_subset[[1]]
-tab_cov_full_t2d <- tab_cov_full_t2d[c(28, 1:25), 
-                                     c("Variable", "Est_CI", "Post_Prob")]
-tab_cov_full_t2d$Variable[1] <- "Intercept"
-rownames(tab_cov_full_t2d) <- NULL
-# Display table
-knitr::kable(tab_cov_full_t2d, format = "html", booktabs = TRUE) %>% 
+# Create var names
+t2d_names <- hyp_names <- chol_names <- 
+  c("Intercept",
+    "Social eating (vs. nutrition-aware)",
+   "Away-from-home eating (vs. nutrition-aware)",
+   "Nutrition-unaware (vs. nutrition-aware)",
+   "Age (per unit increase)",
+   "Male (vs. female)",
+   "College (vs. graduate education)",
+   "High school (vs. graduate education)",
+   "Less than high school (vs. graduate education)",
+   "Household income $10,001-20,000 (vs. >$20,000)",
+   "Household income <= $10,000 (vs. >$20,000)",
+   "Other ethnicity (vs. Puerto Rican)",
+   "Rural residence (vs. urban)",
+   "Sedentary (vs. active)",
+   "Former smoker (vs. never smoker)",
+   "Current smoker (vs. never smoker)",
+   "Former drinker (vs. never drinker)",
+   "Current drinker (vs. never drinker)",
+   "Hypertension (yes vs. no)",
+   "Hypercholesterolemia (yes vs. no)",
+   "Food insecure (vs. food secure)", 
+   "WIC/NAP use (yes vs. no)", 
+   "Social support (per unit increase)", 
+   "Perceived stress (per unit increase)", 
+   "Moderate/severe depression (vs. none/mild)", 
+   "Moderate/severe anxiety (vs. none/mild)")
+hyp_names[19] <- "Type 2 diabetes (yes vs. no)"
+chol_names[19:20] <- c("Type 2 diabetes (yes vs. no)",
+                       "Hypertension (yes vs. no)")
+names_list <- list(t2d_names, hyp_names, chol_names)
+
+# Create output table for each condition: 1 = T2D, 2 = HYP, 3 = CHOL
+for (outcome in 1:3) {
+  # Specific outcome
+  outcome_full <- df_full_no_subset[[outcome]]
+  outcome_subset <- df_full[[outcome]]
+  
+  # Create dataframe
+  tab_dbh_outcome_all <- as.data.frame(matrix(NA, nrow = 26, ncol = 5))
+  # Variable names
+  tab_dbh_outcome_all[, 1] <- names_list[[outcome]]
+  rownames(tab_dbh_outcome_all) <- NULL
+  # Column names 
+  colnames(tab_dbh_outcome_all) <- c("Covariate", "Est_CI_full", "S_error_full", 
+                                     "Est_CI_subset", "S_error_subset")
+  
+  # No subset results
+  tab_dbh_outcome_all[, 2] <- outcome_full[c(28, 1:25), "Est_CI"]
+  tab_dbh_outcome_all[, 3] <- outcome_full[c(28, 1:25), "S_Error"]
+  
+  # Subset results
+  tab_dbh_outcome_all[, 4] <- outcome_subset[c(28, 1:25), "Est_CI"]
+  tab_dbh_outcome_all[, 5] <- outcome_subset[c(28, 1:25), "S_Error"]
+  
+  # Add to list
+  tab_dbh_outcome_all_list[[outcome]] <- tab_dbh_outcome_all
+}
+
+
+# Display tables
+# t2d
+knitr::kable(tab_dbh_outcome_all_list[[1]], format = "html", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+# hyp
+knitr::kable(tab_dbh_outcome_all_list[[2]], format = "html", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+# chol
+knitr::kable(tab_dbh_outcome_all_list[[3]], format = "html", booktabs = TRUE) %>% 
   kableExtra::kable_classic(full_width = F, html_font = "Cambria")
 
-# Display table
-knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>% 
+# Latex tables
+# t2d
+knitr::kable(tab_dbh_outcome_all_list[[1]], format = "latex", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+# hyp
+knitr::kable(tab_dbh_outcome_all_list[[2]], format = "latex", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+# chol
+knitr::kable(tab_dbh_outcome_all_list[[3]], format = "latex", booktabs = TRUE) %>% 
   kableExtra::kable_classic(full_width = F, html_font = "Cambria")
 
 
@@ -649,18 +711,18 @@ baysc::plot_pattern_probs(res = res_unwt, item_labels = item_labels,
 #                                    levels = c(1, 2, 3, 4))
 
 # Plot pattern profiles
-plot_pattern_profiles(res = res_unwt, item_labels = item_labels, 
+plot_pattern_profiles(res = res_unwt, item_labels = item_labels2, 
                       class_title = class_title, 
-                      class_labels = c("Nutrition\nSensitive",
+                      class_labels = c("Nutrition-\nAware",
                                        "Social\nEating",
-                                       "Out-of-Home\nEating",
-                                       "Nutrition\nInsensitive"),
+                                       "Away-from-\nHome Eating",
+                                       "Nutrition-\nUnaware"),
                       y_title = item_title,
                       categ_title = categ_title,
                       categ_labels = categ_labels)
-# Save pattern profiles
+# # Save pattern profiles
 # ggsave(filename = paste0(wd, "Tables_Figures/", "unwt_pattern_profiles_plot.png"),
-#        width = 3800, height = 5600, units = "px", dpi = 700)
+#        width = 4200, height = 5600, units = "px", dpi = 700)
 
 
 #=============== UNWEIGHTED outcome regression table and figure ================
@@ -694,12 +756,12 @@ create_mod_plot(summ_full)
 
 
 ### Create facetted figure displaying the non-subsetted and subsetted models for 
-### the full model with all covariates
+### the full model with main covariates
 create_mod_plot_multiple(
   summ_mod_list_multiple = list(summ_full_no_subset, summ_full),
   mod_labels = c("Not Subsetted", "Subsetted to Exclude \nSelf-Reported Diagnosis"),
-  legend_labels = c("Social Eating", "Out-of-Home Eating",
-                    "Nutrition-Insensitive")) + 
+  legend_labels = c("Social Eating", "Away-from-Home Eating",
+                    "Nutrition-Unaware")) + 
   theme(strip.text = element_text(size = 11),
         axis.title = element_text(size = 13),
         axis.text = element_text(size = 11),
@@ -712,7 +774,7 @@ create_mod_plot_multiple(
 
 
 ### Create table displaying the non-subsetted and subsetted models for the full 
-### model with all covariates
+### model with main covariates
 # Clean output for models
 digits <- 2
 df_full_no_subset <- lapply(summ_full_no_subset, function(x) {
@@ -731,8 +793,8 @@ df_both <- append(df_full_no_subset, df_full)
 names(df_both) <- c("t2d_no_subset", "htn_no_subset", "chol_no_subset",
                     "t2d", "htn", "chol")
 # Create output table
-pattern_labels <- c("Nutrition-Sensitive (Ref)", "Social Eating",
-                    "Out-of-Home Eating", "Nutrition-Insensitive")
+pattern_labels <- c("Nutrition-Aware (Ref)", "Social Eating",
+                    "Away-from-Home Eating", "Nutrition-Unaware")
 tab_dbh_disease <- as.data.frame(matrix(NA, nrow = 10, ncol = 7))
 tab_dbh_disease[, 1] <- c("Full Sample Model",
                           pattern_labels,
@@ -753,9 +815,67 @@ tab_dbh_disease[7:10, c(3, 5, 7)] <- sapply(df_full, function(x)
   x[c(26, 1:3), "P-value"]) 
 
 # Display table
+knitr::kable(tab_dbh_disease, format = "html", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+
+# Latex
 knitr::kable(tab_dbh_disease, format = "latex", booktabs = TRUE) %>% 
   kableExtra::kable_classic(full_width = F, html_font = "Cambria")
 
+
+### Create table displaying all covariate values for the non-subsetted and 
+### subsetted models for the full model with ALL covariates
+tab_dbh_outcome_all_list <- list()
+
+# Create output table for each condition: 1 = T2D, 2 = HYP, 3 = CHOL
+for (outcome in 1:3) {
+  # Specific outcome
+  outcome_full <- df_full_no_subset[[outcome]]
+  outcome_subset <- df_full[[outcome]]
+  
+  # Create dataframe
+  tab_dbh_outcome_all <- as.data.frame(matrix(NA, nrow = 26, ncol = 5))
+  # Variable names
+  tab_dbh_outcome_all[, 1] <- names_list[[outcome]]
+  rownames(tab_dbh_outcome_all) <- NULL
+  # Column names 
+  colnames(tab_dbh_outcome_all) <- c("Covariate", "Est_CI_full", "P_value_full", 
+                                     "Est_CI_subset", "P_value_subset")
+  
+  # No subset results
+  tab_dbh_outcome_all[, 2] <- outcome_full[c(26, 1:25), "Est_CI"]
+  tab_dbh_outcome_all[, 3] <- outcome_full[c(26, 1:25), "P-value"]
+  
+  # Subset results
+  tab_dbh_outcome_all[, 4] <- outcome_subset[c(26, 1:25), "Est_CI"]
+  tab_dbh_outcome_all[, 5] <- outcome_subset[c(26, 1:25), "P-value"]
+  
+  # Add to list
+  tab_dbh_outcome_all_list[[outcome]] <- tab_dbh_outcome_all
+}
+
+
+# Display tables
+# t2d
+knitr::kable(tab_dbh_outcome_all_list[[1]], format = "html", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+# hyp
+knitr::kable(tab_dbh_outcome_all_list[[2]], format = "html", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+# chol
+knitr::kable(tab_dbh_outcome_all_list[[3]], format = "html", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+
+# Latex tables
+# t2d
+knitr::kable(tab_dbh_outcome_all_list[[1]], format = "latex", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+# hyp
+knitr::kable(tab_dbh_outcome_all_list[[2]], format = "latex", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
+# chol
+knitr::kable(tab_dbh_outcome_all_list[[3]], format = "latex", booktabs = TRUE) %>% 
+  kableExtra::kable_classic(full_width = F, html_font = "Cambria")
 
 
 #======================== Correlation between weight draws =====================
@@ -936,6 +1056,63 @@ d_all_long %>%
 #
 #
 # #============ Interaction models
+# ### Core, no interactions, no subset
+# # List of model paths to load
+# mod_names_list <- list(paste0(wd, res_dir, "t2d_corelogreg.RData"),
+#                        paste0(wd, res_dir, "htn_corelogreg.RData"),
+#                        paste0(wd, res_dir, "chol_corelogreg.RData"))
+# # List of loaded models
+# mod_res_list <- list()
+# for (i in 1:length(mod_names_list)) {
+#   load(mod_names_list[[i]])
+#   mod_res_list[[i]] <- wtd_logreg_res
+# }
+# core_no_subset_mod_res_list <- mod_res_list
+# # List of summarized models
+# summ_mod_list <- lapply(mod_res_list, function(x) 
+#   summarize_parms(x, quant_lb = 0.025, quant_ub = 0.975, exponentiate = TRUE))
+# # Plot models
+# create_mod_plot(summ_mod_list)
+# 
+# 
+# ### Core, no interactions
+# # List of model paths to load
+# mod_names_list <- list(paste0(wd, res_dir, "t2d_unaware_corelogreg.RData"),
+#                        paste0(wd, res_dir, "htn_unaware_corelogreg.RData"),
+#                        paste0(wd, res_dir, "chol_unaware_corelogreg.RData"))
+# # List of loaded models
+# mod_res_list <- list()
+# for (i in 1:length(mod_names_list)) {
+#   load(mod_names_list[[i]])
+#   mod_res_list[[i]] <- wtd_logreg_res
+# }
+# core_mod_res_list <- mod_res_list
+# # List of summarized models
+# summ_mod_list <- lapply(mod_res_list, function(x) 
+#   summarize_parms(x, quant_lb = 0.025, quant_ub = 0.975, exponentiate = TRUE))
+# # Plot models
+# create_mod_plot(summ_mod_list)
+# 
+# 
+# ### Marginal
+# # List of model paths to load
+# mod_names_list <- list(paste0(wd, res_dir, "t2d_unaware_marglogreg.RData"),
+#                        paste0(wd, res_dir, "htn_unaware_marglogreg.RData"),
+#                        paste0(wd, res_dir, "chol_unaware_marglogreg.RData"))
+# # List of loaded models
+# mod_res_list <- list()
+# for (i in 1:length(mod_names_list)) {
+#   load(mod_names_list[[i]])
+#   mod_res_list[[i]] <- wtd_logreg_res
+# }
+# # List of summarized models
+# summ_mod_list <- lapply(mod_res_list, function(x) 
+#   summarize_parms(x, quant_lb = 0.025, quant_ub = 0.975, exponentiate = TRUE))
+# # Plot models
+# create_mod_plot(summ_mod_list)
+# marg_mod_res_list <- mod_res_list
+
+
 # ### Core, interactions
 # # List of model paths to load
 # mod_names_list <- list(paste0(wd, res_dir, "t2d_unaware_core_intlogreg.RData"),

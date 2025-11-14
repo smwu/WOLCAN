@@ -2,7 +2,7 @@
 # PROSPECT application functions
 # Author: Stephanie Wu
 # Date created: 2024/09/29
-# Date updated: 2024/09/29
+# Date updated: 2025/05/02
 #=================================================
 
 ### Frequentist survey-weighted logistic regression
@@ -580,6 +580,9 @@ create_mod_plot_multiple <- function(summ_mod_list_multiple, mod_labels,
   
   plot_df <- as.data.frame(do.call("rbind", plot_df_list))
   plot_df$Subset <- factor(rep(mod_labels, each = n_rows), levels = mod_labels)
+  plot_df <- plot_df %>%
+    mutate(Pattern = factor(Pattern, levels = rev(legend_labels), 
+                            labels = rev(legend_labels)))
   
   plot_df %>% 
     ggplot(aes(x=Outcome, y=OR, ymin=Lower, ymax=Upper,col=Pattern,
