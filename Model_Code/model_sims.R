@@ -108,6 +108,7 @@ if (already_done) {
   parallel <- TRUE   # Whether to parallelize for MI
   n_cores <- 8       # Number of cores to use for parallelization
   wts_adj <- "MI"    # Adjustment method to account for weights uncertainty
+  wts_quantile <- TRUE # Use quantiles to draw pseudo-weights
   adjust <- TRUE     # Whether to adjust variance for pseudo-likelihood
   tol <- 1e-8        # Underflow tolerance
   num_reps <- 100    # Number of bootstrap replicates for WS adjustment
@@ -141,6 +142,8 @@ if (already_done) {
     hat_pi_R <- sim_samp_B$true_pi_R
   } else if (scenario == 15) {  # A3 not included in prediction covariates
     pred_covs_B <- c("A1", "A2")
+  } else if (scenario == 22) { # Use random draws for pseudo-weights
+    wts_quantile <- FALSE
   }
   
   ### Run weighted model
@@ -150,7 +153,8 @@ if (already_done) {
                 pi_R = pi_R, hat_pi_R = hat_pi_R, num_post = num_post, 
                 frame_B = frame_B, frame_R = frame_R, trim_method = trim_method, 
                 trim_c = trim_c, D = D, parallel = parallel, n_cores = n_cores,
-                wts_adj = wts_adj, adjust = adjust, tol = tol, 
+                wts_adj = wts_adj, wts_quantile = wts_quantile, 
+                adjust = adjust, tol = tol, 
                 num_reps = num_reps, run_adapt = run_adapt, 
                 K_max = K_max, adapt_seed = adapt_seed, K_fixed = NULL, 
                 fixed_seed = fixed_seed, class_cutoff = 0.05, 

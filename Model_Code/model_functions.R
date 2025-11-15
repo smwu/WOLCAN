@@ -33,6 +33,16 @@
 #   parallel: Boolean specifying if parallelization is to be used for the 
 # multiple imputation variance calculation (default is `TRUE`).
 #   n_cores: Number of cores to run in parallel. Default is 4.
+#   wts_adj: String specifying how variability in the pseudo-weights should be 
+# accounted for. Default ("MI") uses multiple imputation and re-runs the WOLCA 
+# model with different pseudo-weights. Other options are: "WS all", where WOLCA 
+# is run once but the Williams & Savitsky variance adjustment uses different 
+# pseudo-weights; "WS mean", where WOLCA is run once and the variance adjustment 
+# uses the mean pseudo-weights; and "none", where only the mean pseudo-weights 
+# are used and no uncertainty is accounted for. 
+#   wts_quantile: Boolean specifying whether quantiles of the pseudo-weight 
+# distribution should be used to improve efficiency, or if these should be 
+# random draws. Default is `TRUE` and uses quantiles.
 #   adjust: Boolean specifying whether to incorporate the post-processing variance 
 # adjustment to ensure proper uncertainty intervals. Default is `TRUE`.
 #   adapt_seed: Default is 1.
@@ -42,9 +52,6 @@
 # must be specified.
 #   alpha_fixed, eta_fixed: only specify if K_fixed is not `NULL`. Otherwise, 
 # defaults to alpha = K, eta = 1.
-#   MI: Boolean indicating if multiple imputation procedure should be performed
-# for variance estimation that incorporates variability in the pseudo-weights. 
-# Default is `TRUE`.
 #   num_reps: Number of bootstrap replicates for the WS variance adjustment
 #   pred_model: String specifying type of prediction model to use to create the 
 # pseudo-weights. Must be one of `"bart"` (default) or `"glm"`.
@@ -60,6 +67,7 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
                    trim_method = "t2", trim_c = 20, 
                    D = 10, parallel = TRUE, n_cores = 4, 
                    wts_adj = c("MI", "WS all", "WS mean", "none"), 
+                   wts_quantile = TRUE, 
                    adjust = TRUE, tol = 1e-8, num_reps = 100,
                    run_adapt = TRUE, K_max = 30, adapt_seed = 1, 
                    K_fixed = NULL, fixed_seed = 1, class_cutoff = 0.05,
@@ -200,7 +208,8 @@ wolcan <- function(x_mat, dat_B, dat_R, pred_model = c("bart", "glm"),
       # weights posterior, using parallelization if desired. 
       # Apply post-processing variance adjustment for proper variance estimation.
       print("Running estimation and variance...")
-      comb_estimates <- get_var_dir(D = D, wts_post = wts_post, K = K, 
+      comb_estimates <- get_var_dir(D = D, wts_post = wts_post, 
+                                    wts_quantile = wts_quantile, K = K, 
                                     tol = tol, parallel = parallel, 
                                     n_cores = n_cores, adjust = adjust, 
                                     x_mat = x_mat, fixed_seed = fixed_seed,
@@ -472,7 +481,7 @@ get_var_adj_mean <- function(K, res, wts, tol, num_reps = 100,
 
 # wts_post: (n1)xM posterior distribution of weights for individuals in the NPS, 
 # with each column corresponding to a posterior draw
-get_var_adj <- function(D, K, res, wts_post, tol, num_reps = 100, 
+get_var_adj <- function(D, K, res, wts_post, wts_quantile, tol, num_reps = 100, 
                              alpha = NULL, eta = NULL,  
                              save_res = TRUE, save_path = NULL, 
                              adjust_seed = NULL) {
@@ -531,10 +540,21 @@ get_var_adj <- function(D, K, res, wts_post, tol, num_reps = 100,
   
   for (d in 1:D) {  # For each posterior weight set
     print(paste0("Draw ", d))
-    # Draw from weights posterior closest to quantile
-    draw <- which.min(abs(col_meds - med_quants[d]))
-    w_all <- c(w_all_post[, draw])
-    wts_draws[, d] <- wts_post[, draw]
+    
+    # Get pseudo-weight draw 
+    if (wts_quantile) {  # Use quantiles for efficiency
+      
+      # Draw from weights posterior closest to quantile
+      draw <- which.min(abs(col_meds - med_quants[d]))
+      w_all <- c(w_all_post[, draw])
+      wts_draws[, d] <- wts_post[, draw]
+      
+    } else {  # Use random sample
+      # Draw from weights posterior
+      set.seed(d)
+      draw <- sample(1:ncol(wts_post), size = 1)
+      wts_d <- c(wts_post[, draw])
+    }
     
     #=============== Run Stan model ==============================================
     
@@ -697,7 +717,7 @@ get_var_adj <- function(D, K, res, wts_post, tol, num_reps = 100,
 #   adjust: Boolean indicating if post-processing variance adjustment should be 
 # applied. Default is TRUE.
 #   alpha_fixed, eta_fixed. Only non-NULL if K came from K_fixed
-get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1, 
+get_var_dir <- function(D = 10, wts_post, K, wts_quantile, x_mat, fixed_seed = 1, 
                         tol = 1e-8, parallel = TRUE, n_cores = 4,
                         adjust = TRUE, class_cutoff = 0.05, n_runs = 20000, 
                         burn = 10000, thin = 5, update = 1000,
@@ -722,6 +742,7 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
     
     # Run wolca_d in parallel
     res_all <- parLapply(cluster, 1:D, wolca_d, wts_post = wts_post, 
+                         wts_quantile = wts_quantile, 
                          x_mat = x_mat, K = K, adjust = adjust, 
                          class_cutoff = class_cutoff, n_runs = n_runs, 
                          burn = burn, thin = thin, update = update,
@@ -733,7 +754,8 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
     
   } else {  # Serial version
     # Run wolca_d serially
-    res_all <- lapply(1:D, wolca_d, wts_post = wts_post, x_mat = x_mat, K = K, 
+    res_all <- lapply(1:D, wolca_d, wts_post = wts_post, 
+                      wts_quantile = wts_quantile, x_mat = x_mat, K = K, 
                       adjust = adjust, class_cutoff = class_cutoff, 
                       n_runs = n_runs, burn = burn, thin = thin, update = update,
                       fixed_seed = fixed_seed, alpha_fixed = alpha_fixed, 
@@ -978,25 +1000,33 @@ get_var_dir <- function(D = 10, wts_post, K, x_mat, fixed_seed = 1,
 #   wts_post: Posterior distribution of  estimated pseudo-weights
 #   adjust: Boolean indicating if post-processing variance adjustment should be applied
 # inherit parameters from get_var_dir
-wolca_d <- function(d, wts_post, x_mat, K, adjust, class_cutoff, n_runs, burn, 
-                    thin, update, fixed_seed, alpha_fixed, eta_fixed, D, 
-                    save_res_d, save_path) {
+wolca_d <- function(d, wts_post, wts_quantile, x_mat, K, adjust, class_cutoff, 
+                    n_runs, burn, thin, update, fixed_seed, alpha_fixed, 
+                    eta_fixed, D, save_res_d, save_path) {
   
   # # Source Rcpp functions from baysc package
   # Rcpp::sourceCpp(rcpp_path)
   
   print(paste0("Draw ", d))
   
-  # Get quantiles of medians of weights posterior
-  col_meds <- c(apply(wts_post, 2, median))
-  cutoffs <- (seq(1, D, length.out = D) - 0.5) / D
-  med_quants <- stats::quantile(x = col_meds, probs = cutoffs)
+  # Get pseudo-weight draw
+  if (wts_quantile) {  # Use quantiles for efficiency
+    
+    # Get quantiles of medians of weights posterior
+    col_meds <- c(apply(wts_post, 2, median))
+    cutoffs <- (seq(1, D, length.out = D) - 0.5) / D
+    med_quants <- stats::quantile(x = col_meds, probs = cutoffs)
+    
+    # Draw from weights posterior closest to quantile
+    draw <- which.min(abs(col_meds - med_quants[d]))
+    wts_d <- c(wts_post[, draw])
   
-  # Draw from weights posterior closest to quantile
-  draw <- which.min(abs(col_meds - med_quants[d]))
-  wts_d <- c(wts_post[, draw])
-      # draw <- sample(1:ncol(wts_post), size = 1)
-      # wts_d <- c(wts_post[, draw])
+  } else { # Random sample
+    # Draw from weights posterior
+    set.seed(d)
+    draw <- sample(1:ncol(wts_post), size = 1)
+    wts_d <- c(wts_post[, draw])
+  }
   
   # Initialize fixed sampler hyperparameters
   if (is.null(alpha_fixed)) {
