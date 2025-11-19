@@ -142,8 +142,15 @@ if (already_done) {
     hat_pi_R <- sim_samp_B$true_pi_R
   } else if (scenario == 15) {  # A3 not included in prediction covariates
     pred_covs_B <- c("A1", "A2")
-  } else if (scenario == 22) { # Use random draws for pseudo-weights
+  } else if (scenario == 22) {  # Use random draws for pseudo-weights
     wts_quantile <- FALSE
+  } else if (scenario == 23) {  # Use logistic regression to predict pseudo-weights
+    pred_model <- "glm"
+    wts_adj <- "WS mean"  # WS one-step adjustment, b/c no weights distribution
+  } else if (scenario == 24) {
+    # Covariates to predict NPS and RS selection
+    pred_covs_B <- c("age", "sex_f_num", "educ_num", "hhinc_num", "ethn_num")  
+    pred_covs_R <- c("age", "sex_f_num", "educ_num", "hhinc_num", "ethn_num")  
   }
   
   ### Run weighted model
@@ -162,7 +169,7 @@ if (already_done) {
                 save_res = TRUE, save_res_d = FALSE, save_path = save_path)
   
   ### Run unweighted model
-  if (scenario %in% c(0, 1, 7:11, 18:19)) {
+  if (scenario %in% c(0, 1, 7:11, 18:19, 24)) {
     res_unwt <- wolca(x_mat = x_mat, sampling_wt = rep(1, nrow(x_mat)), 
                              run_sampler = "both", K_max = K_max, 
                              adapt_seed = adapt_seed, class_cutoff = 0.05, 

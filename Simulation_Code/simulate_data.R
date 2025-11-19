@@ -962,6 +962,166 @@ for (i in 1:length(scenario_list)) {
   }
 }
 
+
+#=================== SCENARIO 24: SAMPLE SIZE PROSPECT W/ PROSPECT WEIGHTS =====
+# Pseudo-weights generated using application-informed variables.
+# Covariates: age, sex, educ, income, ethnicity, urban, disability
+# Variance adjustment, pi_R unknown and predicted using continuous BART, 
+# sample size similar to PROSPECT, non-overlapping patterns, X~S, 
+# high overlap for pi_R and pi_B
+scenario <- 24
+
+# Create data folder if it doesn't exist
+dir_path <- paste0(wd, data_dir, "scen_", scenario, "/")
+if (!dir.exists(dir_path)) {
+  dir.create(file.path(dir_path))
+}
+
+### General parameters
+N <- 3000000     # Population size
+pop_seed <- 24  # Set seed
+scale_B <- 0.8  # Scaling to control variability of NPS weights
+
+### Parameters for generating categorical latent class assignment C
+# DBH pattern depends on age, education
+formula_c <- "~ age_cent + educ_num"
+beta_mat_c <- matrix(c(0, 0, 0, 
+                       0.1, -0.1, 0.05,   
+                       -0.2, 0.1, -0.1), nrow = 3, byrow = TRUE)
+colnames(beta_mat_c) <- c("Intercept", "age_cent", "educ_num")
+
+### Parameters for generating observed manifest variables X
+J <- 30; R <- 4; K <- 3
+formula_x <- "~ c_all"
+V_unique <- data.frame(c_all = as.factor(1:K))
+profiles <- as.matrix(data.frame(C1 = c(rep(1, times = 0.5 * J),
+                                        rep(3, times = 0.5 * J)),
+                                 C2 = c(rep(4, times = 0.2 * J),
+                                        rep(2, times = 0.8 * J)),
+                                 C3 = c(rep(3, times = 0.3 * J),
+                                        rep(4, times = 0.4 * J),
+                                        rep(1, times = 0.3 * J))))
+modal_theta_prob <- 0.85
+beta_list_x_temp <- get_betas_x(profiles = profiles, R = R,
+                                modal_theta_prob = modal_theta_prob,
+                                formula_x = formula_x, V_unique = V_unique)
+# Add in coefficients for hhinc, updating formula_x and beta_list_x
+formula_x <- "~ c_all + age_cent + hhinc_num + c_all:age_cent"
+# Items 1-2 are affected in the following manner: 
+# level 2 probability increases as hhinc_num increases
+beta_list_x <- lapply(1:2, function(j) cbind(beta_list_x_temp[[j]],
+                                             age_cent = rep(0, 4),
+                                             hhinc_num = c(0, 0.5, 0, 0), 
+                                             `c_all2:age_cent` = rep(0, 4),
+                                             `c_all3:age_cent` = rep(0, 4)))
+beta_list_x <- c(beta_list_x, lapply(3:(J-2), function(j) 
+  cbind(beta_list_x_temp[[j]], age_cent = rep(0, 4), hhinc_num = rep(0, 4), 
+        `c_all2:age_cent` = rep(0, 4),
+        `c_all3:age_cent` = rep(0, 4))))
+# Items 29-30 are affected as follows: age associated with r=3 for k=1, 
+# r=2 for k=2, and r=1 for k=3
+beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j) 
+  cbind(beta_list_x_temp[[j]], age_cent = c(0, 0, 2, 0), hhinc_num = rep(0, 4), 
+        `c_all2:age_cent` = c(0, 2, -2, 0), `c_all3:age_cent` = c(0, -1, -2, -1))))
+
+### Generate population
+n_B <- 1500  # Sample size for non-probability sample
+n_R <- 75000  # Sample size for reference sample
+sim_pop <- sim_pop_wolcan_pr(N = N, J = J, K = K, R = R, n_B = n_B, n_R = n_R, 
+                             scale_B = scale_B,
+                              high_overlap = TRUE, formula_c = formula_c, 
+                              beta_mat_c = beta_mat_c, formula_x = formula_x, 
+                              beta_list_x = beta_list_x, pop_seed = pop_seed, 
+                              save_res = TRUE, save_path = dir_path) 
+
+### Generate samples
+num_samps <- 100  # Number of samples
+for (i in 1:num_samps) {
+  sim_samps <- sim_samp_wolcan_pr(i = i, sim_pop = sim_pop, samp_seed = i,
+                                  scenario = scenario, save_res = TRUE, 
+                                  save_path = dir_path)
+}
+
+
+#=================== SCENARIO 25: PROSPECT WEIGHTS W/ LOW OVERLAP ==============
+# Pseudo-weights generated using application-informed variables.
+# Covariates: age, sex, educ, income, ethnicity, urban, disability
+# Variance adjustment, pi_R unknown and predicted using continuous BART, 
+# sample size similar to PROSPECT, non-overlapping patterns, X~S, 
+# LOW overlap for pi_R and pi_B
+scenario <- 25
+
+# Create data folder if it doesn't exist
+dir_path <- paste0(wd, data_dir, "scen_", scenario, "/")
+if (!dir.exists(dir_path)) {
+  dir.create(file.path(dir_path))
+}
+
+### General parameters
+N <- 3000000     # Population size
+pop_seed <- 25  # Set seed
+scale_B <- 0.8  # Scaling to control variability of NPS weights
+
+### Parameters for generating categorical latent class assignment C
+# DBH pattern depends on age, education
+formula_c <- "~ age_cent + educ_num"
+beta_mat_c <- matrix(c(0, 0, 0, 
+                       0.1, -0.1, 0.05,   
+                       -0.2, 0.1, -0.1), nrow = 3, byrow = TRUE)
+colnames(beta_mat_c) <- c("Intercept", "age_cent", "educ_num")
+
+### Parameters for generating observed manifest variables X
+J <- 30; R <- 4; K <- 3
+formula_x <- "~ c_all"
+V_unique <- data.frame(c_all = as.factor(1:K))
+profiles <- as.matrix(data.frame(C1 = c(rep(1, times = 0.5 * J),
+                                        rep(3, times = 0.5 * J)),
+                                 C2 = c(rep(4, times = 0.2 * J),
+                                        rep(2, times = 0.8 * J)),
+                                 C3 = c(rep(3, times = 0.3 * J),
+                                        rep(4, times = 0.4 * J),
+                                        rep(1, times = 0.3 * J))))
+modal_theta_prob <- 0.85
+beta_list_x_temp <- get_betas_x(profiles = profiles, R = R,
+                                modal_theta_prob = modal_theta_prob,
+                                formula_x = formula_x, V_unique = V_unique)
+# Add in coefficients for hhinc, updating formula_x and beta_list_x
+formula_x <- "~ c_all + age_cent + hhinc_num + c_all:age_cent"
+# Items 1-2 are affected in the following manner: 
+# level 2 probability increases as hhinc_num increases
+beta_list_x <- lapply(1:2, function(j) cbind(beta_list_x_temp[[j]],
+                                             age_cent = rep(0, 4),
+                                             hhinc_num = c(0, 0.5, 0, 0), 
+                                             `c_all2:age_cent` = rep(0, 4),
+                                             `c_all3:age_cent` = rep(0, 4)))
+beta_list_x <- c(beta_list_x, lapply(3:(J-2), function(j) 
+  cbind(beta_list_x_temp[[j]], age_cent = rep(0, 4), hhinc_num = rep(0, 4), 
+        `c_all2:age_cent` = rep(0, 4),
+        `c_all3:age_cent` = rep(0, 4))))
+# Items 29-30 are affected as follows: age associated with r=3 for k=1, 
+# r=2 for k=2, and r=1 for k=3
+beta_list_x <- c(beta_list_x, lapply((J-1):J, function(j) 
+  cbind(beta_list_x_temp[[j]], age_cent = c(0, 0, 2, 0), hhinc_num = rep(0, 4), 
+        `c_all2:age_cent` = c(0, 2, -2, 0), `c_all3:age_cent` = c(0, -1, -2, -1))))
+
+### Generate population
+n_B <- 1500  # Sample size for non-probability sample
+n_R <- 75000  # Sample size for reference sample
+sim_pop <- sim_pop_wolcan_pr(N = N, J = J, K = K, R = R, n_B = n_B, n_R = n_R, 
+                             scale_B = scale_B,
+                             high_overlap = FALSE, formula_c = formula_c, 
+                             beta_mat_c = beta_mat_c, formula_x = formula_x, 
+                             beta_list_x = beta_list_x, pop_seed = pop_seed, 
+                             save_res = TRUE, save_path = dir_path) 
+
+### Generate samples
+num_samps <- 100  # Number of samples
+for (i in 1:num_samps) {
+  sim_samps <- sim_samp_wolcan_pr(i = i, sim_pop = sim_pop, samp_seed = i,
+                                  scenario = scenario, save_res = TRUE, 
+                                  save_path = dir_path)
+}
+
 #=================== SCENARIO 1: BASELINE OLD ==================================
 # Variance adjustment, pi_R unknown and predicted using continuous BART, 
 # sample size 2000/40,000 (5%), non-overlapping patterns, X~S, 
