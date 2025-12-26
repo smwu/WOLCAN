@@ -69,6 +69,8 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   theta_cover_all <- array(0, c(L, dim(true_params$true_theta)[c(1,2)]))
   # MSE for all iterations
   pi_mse_all <- theta_mse_all <- rep(NA, L)
+  # Misclassification for all iterations
+  prop_mismatch_all <- avg_max_class_probs_all <- avg_true_class_probs_all <- rep(NA, L)
   
   # Initialize plotting structures
   pi_all <- matrix(NA, nrow=L, ncol=true_K)
@@ -117,6 +119,9 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
         theta_var_all[l] <- summ_l$theta_var
         theta_mse_all[l] <- summ_l$theta_mse
         mode_mis_all[l] <- summ_l$mode_mis
+        prop_mismatch_all[l] = summ_l$prop_mismatch 
+        avg_max_class_probs_all[l] = summ_l$avg_max_class_probs
+        avg_true_class_probs_all[l] = summ_l$avg_true_class_probs
         
         # Handle extra estimated classes if necessary
         K_l <- length(summ_l$pi)
@@ -163,6 +168,9 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
         theta_var_all[l] <- summ_l$theta_var
         theta_mse_all[l] <- summ_l$theta_mse
         mode_mis_all[l] <- summ_l$mode_mis
+        prop_mismatch_all[l] = summ_l$prop_mismatch 
+        avg_max_class_probs_all[l] = summ_l$avg_max_class_probs
+        avg_true_class_probs_all[l] = summ_l$avg_true_class_probs
         
         # Handle extra estimated classes if necessary
         K_l <- length(summ_l$pi)
@@ -202,6 +210,11 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
   # Coverage for theta: average over food items
   theta_cover_avg <- colMeans(colMeans(theta_cover_all, na.rm = TRUE), na.rm = TRUE)
   
+  # Calculation misspecification, averaged across iterations
+  prop_mismatch_avg = mean(prop_mismatch_all, na.rm = TRUE)
+  avg_max_class_probs_avg = mean(avg_max_class_probs_all, na.rm = TRUE)
+  avg_true_class_probs_avg = mean(avg_true_class_probs_all, na.rm = TRUE)
+  
   runtime_avg <- mean(runtime_all, na.rm = TRUE)
   
   #============== Return results ===============================================
@@ -209,6 +222,9 @@ get_metrics_wolcan <- function(wd, data_dir, res_dir, sum_dir,
                    pi_var = pi_var, theta_bias = theta_bias, 
                    theta_mode_bias = theta_mode_bias, theta_var = theta_var, 
                    pi_cover_avg = pi_cover_avg, theta_cover_avg = theta_cover_avg, 
+                   prop_mismatch_avg = prop_mismatch_avg,
+                   avg_max_class_probs_avg = avg_max_class_probs_avg,
+                   avg_true_class_probs_avg = avg_true_class_probs_avg,
                    runtime_avg = runtime_avg, 
                    # results over all sample iterations
                    wts_dist = wts_dist, K_dist = K_dist, pi_dist = pi_dist, 
@@ -280,7 +296,11 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
           estimates <- res$estimates_adjust
         }
       } else if (model == "wolca") {
-        estimates <- res$estimates
+        if (scenario == 26) { # Using true weights (fixed)
+          estimates <- res$estimates_adjust 
+        } else {
+          estimates <- res$estimates
+        }
       } else {
         stop("Error: model must be one of 'wolcan' or 'wolca'")
       }
@@ -304,7 +324,9 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
         estimates$pi_med <- c(estimates$pi_med, rep(0, missing))
         filler <- array(0, dim=c(dim(estimates$theta_med)[1], missing, 
                                  dim(estimates$theta_med)[3]))
-        estimates$theta_med <- abind::abind(estimates$theta_med, filler, along = 2)  
+        estimates$theta_med <- abind::abind(estimates$theta_med, filler, along = 2) 
+        estimates$pred_class_probs <- abind::abind(estimates$pred_class_probs, 
+            array(0, dim=c(nrow(estimates$pred_class_probs), missing)), along=2)
         
         # Add 0's to full MCMC outputs for the missing classes
         estimates$pi_red <- abind::abind(estimates$pi_red, array(0, dim=c(M, missing)), 
@@ -348,6 +370,24 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
                                     dist_type = dist_type)
       pi_dist <- pi_perm$pi_dist
       
+      #============== Calculate misclassification and posterior probability ====
+      # Calculate proportion of individuals with mismatches
+      true_c_all <- sim_samp_B$c_all
+      order_position <- order(order_sub_est)
+      est_c_all <- order_position[estimates$c_all]
+      misclass_table <- table(true_c_all, est_c_all)
+      num_mismatch <- sum(est_c_all != true_c_all)
+      prop_mismatch <- num_mismatch / length(est_c_all)
+      
+      # Max posterior class assignment prob, averaged across individuals
+      max_class_probs <- apply(estimates$pred_class_probs, 1, max)
+      avg_max_class_probs <- mean(max_class_probs, na.rm = TRUE)
+      # Posterior class assignment prob for true class, averaged across indivs
+      true_class_probs <- estimates$pred_class_probs[
+        cbind(seq_len(nrow(estimates$pred_class_probs)), 
+              order_sub_est[true_c_all])]
+      avg_true_class_probs <- mean(true_class_probs, na.rm = TRUE)
+
       #============== Calculate coverage and CI widths ===========================
       ##### pi
       # Obtain credible intervals for each of the K true clusters
@@ -437,10 +477,16 @@ get_metrics_wolcan_i <- function(samp_i, sim_pop, wd, data_dir, res_dir,
                      theta_cover = theta_cover, theta_var = theta_var, 
                      theta_mse = theta_mse, theta_mode = theta_mode, 
                      theta_mode_dist = theta_mode_dist, mode_mis = mode_mis, 
-                     pi = pi, K = K)
+                     pi = pi, K = K, 
+                     prop_mismatch = prop_mismatch, 
+                     avg_max_class_probs = avg_max_class_probs,
+                     avg_true_class_probs = avg_true_class_probs,
+                     misclass_table = misclass_table)
       
       # Save summary metrics
-      save(summ_i, file = paste0(save_path, "samp_", samp_i, "_", model, ".RData"))
+      if (!is.null(save_path)) {
+        save(summ_i, file = paste0(save_path, "samp_", samp_i, "_", model, ".RData"))
+      }
     }
   }
   

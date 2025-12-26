@@ -2,7 +2,7 @@
 # Run and summarize scenarios for predicting pseudo-weights
 # Author: Stephanie Wu
 # Date created: 2024/08/10
-# Date updated: 2024/08/10
+# Date updated: 2025/11/19
 #===========================================================
 
 rm(list = ls())
@@ -47,6 +47,10 @@ num_samps <- 100 # Number of samples
 # Initialize results data frame
 weights_res <- as.data.frame(matrix(NA, nrow = num_scen, ncol = num_samps))
 pi_res <- as.data.frame(matrix(NA, nrow = num_scen, ncol = num_samps))
+w_B_low_res <- as.data.frame(matrix(NA, nrow = num_scen, ncol = num_samps))
+w_B_high_res <- as.data.frame(matrix(NA, nrow = num_scen, ncol = num_samps))
+pi_B_low_res <- as.data.frame(matrix(NA, nrow = num_scen, ncol = num_samps))
+pi_B_high_res <- as.data.frame(matrix(NA, nrow = num_scen, ncol = num_samps))
 
 # Counter to keep track of total scenarios
 counter <- 1
@@ -71,7 +75,7 @@ for (i in 1:length(data_scen)) {  # Data-generating scenario
       num_post <- 1000
     }
     # Type of prediction model
-    if (model %in% c("logistic", "logistic_cov")) {  # Logistic regression
+    if (model %in% c("logistic_true", "logistic", "logistic_cov")) {  # Logistic regression
       pred_model <- "glm"
     } else {  # BART model
       pred_model <- "bart"
@@ -94,6 +98,7 @@ for (i in 1:length(data_scen)) {  # Data-generating scenario
         wts <- rep(1, nrow(x_mat))
         res <- mean(abs(wts - 1/(sim_samp_B$true_pi_B)))
         pi <- mean(abs(1/wts - sim_samp_B$true_pi_B))
+        w_B_low <- w_B_high <- pi_B_low <- pi_B_high <- 1
         
       } else {
         invisible(capture.output(
@@ -110,10 +115,22 @@ for (i in 1:length(data_scen)) {  # Data-generating scenario
         res <- mean(abs(est_weights$wts - (1/sim_samp_B$true_pi_B)))
         # Mean absolute different of inclusion probabilities
         pi <- mean(abs(est_weights$hat_pi_B - sim_samp_B$true_pi_B))
+        
+        # CI for weights
+        w_B_low <- est_weights$w_B_low 
+        w_B_high <- est_weights$w_B_high
+        
+        # CI for inclusion probabilities
+        pi_B_low <- est_weights$pi_B_low
+        pi_B_high <- est_weights$pi_B_high
       }
       
       weights_res[counter, k] <- res
       pi_res[counter, k] <- pi
+      w_B_low_res[counter, k] <- w_B_low
+      w_B_high_res[counter, k] <- w_B_high
+      pi_B_low_res[counter, k] <- pi_B_low
+      pi_B_high_res[counter, k] <- pi_B_high
     }
     # Increment counter and print progress
     counter <- counter + 1
@@ -121,10 +138,22 @@ for (i in 1:length(data_scen)) {  # Data-generating scenario
     
     temp <- weights_res[counter, ]
     save(temp, file = paste0(wd, sum_dir, "scen_", scenario, "/model_", model, 
-                             ".RData"))
+                             "_weights.RData"))
     temp2 <- pi_res[counter, ]
     save(temp2, file = paste0(wd, sum_dir, "scen_", scenario, "/model_", model, 
                               "_pi.RData"))
+    temp3 <- w_B_low_res[counter, ]
+    save(temp3, file = paste0(wd, sum_dir, "scen_", scenario, "/model_", model, 
+                              "_w_B_low.RData"))
+    temp4 <- w_B_high_res[counter, ]
+    save(temp4, file = paste0(wd, sum_dir, "scen_", scenario, "/model_", model, 
+                              "_w_B_high.RData"))
+    temp5 <- pi_B_low_res[counter, ]
+    save(temp5, file = paste0(wd, sum_dir, "scen_", scenario, "/model_", model, 
+                              "_pi_B_low.RData"))
+    temp6 <- pi_B_high_res[counter, ]
+    save(temp6, file = paste0(wd, sum_dir, "scen_", scenario, "/model_", model, 
+                              "_pi_B_high.RData"))
   }
 }
 
@@ -132,9 +161,21 @@ rownames(weights_res) <- paste0(rep(data_scen, each = length(model_scen)), "_",
                                 rep(model_scen, times = length(data_scen)))
 rownames(pi_res) <- paste0(rep(data_scen, each = length(model_scen)), "_", 
                                 rep(model_scen, times = length(data_scen)))
+rownames(w_B_low_res) <- paste0(rep(data_scen, each = length(model_scen)), "_", 
+                                    rep(model_scen, times = length(data_scen)))
+rownames(w_B_high_res) <- paste0(rep(data_scen, each = length(model_scen)), "_", 
+                                     rep(model_scen, times = length(data_scen)))
+rownames(pi_B_low_res) <- paste0(rep(data_scen, each = length(model_scen)), "_", 
+                                     rep(model_scen, times = length(data_scen)))
+rownames(pi_B_high_res) <- paste0(rep(data_scen, each = length(model_scen)), "_", 
+                                      rep(model_scen, times = length(data_scen)))
 
 save(weights_res, file = paste0(wd, sum_dir, "weights_res.RData"))
 save(pi_res, file = paste0(wd, sum_dir, "pi_res.RData"))
+save(w_B_low_res, file = paste0(wd, sum_dir, "w_B_low_res.RData"))
+save(w_B_high_res, file = paste0(wd, sum_dir, "w_B_high_res.RData"))
+save(pi_B_low_res, file = paste0(wd, sum_dir, "pi_B_low_res.RData"))
+save(pi_B_high_res, file = paste0(wd, sum_dir, "pi_B_high_res.RData"))
 
 #load(paste0(wd, sum_dir, "weights_res.RData"))
 

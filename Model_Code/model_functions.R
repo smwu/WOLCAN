@@ -1011,7 +1011,7 @@ wolca_d <- function(d, wts_post, wts_quantile, x_mat, K, adjust, class_cutoff,
   
   # Get pseudo-weight draw
   if (wts_quantile) {  # Use quantiles for efficiency
-    
+    print("Using quantiles for efficiency...")
     # Get quantiles of medians of weights posterior
     col_meds <- c(apply(wts_post, 2, median))
     cutoffs <- (seq(1, D, length.out = D) - 0.5) / D
@@ -1022,6 +1022,7 @@ wolca_d <- function(d, wts_post, wts_quantile, x_mat, K, adjust, class_cutoff,
     wts_d <- c(wts_post[, draw])
   
   } else { # Random sample
+    print("Randomly drawing weights...")
     # Draw from weights posterior
     set.seed(d)
     draw <- sample(1:ncol(wts_post), size = 1)
@@ -1086,10 +1087,12 @@ wolca_d <- function(d, wts_post, wts_quantile, x_mat, K, adjust, class_cutoff,
 # from the BART posterior draws. Each column corresonds to a single draw. Nx(num_post).
 #   pred_model: String specifying type of prediction model to use to create the 
 # pseudo-weights. Must be one of `"bart"` (default) or `"glm"`.
+#   ci_level: Level for confidence interval or posterior interval. Default is 0.95.
 get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R, 
                              num_post = 1000, pi_R, hat_pi_R = NULL, 
                              frame_B = 1, frame_R = 1, trim_method = "t2", 
-                             trim_c = 20, pred_model = c("bart", "glm")) {
+                             trim_c = 20, pred_model = c("bart", "glm"),
+                             ci_level = 0.95) {
   # Initialize output
   est_weights <- list()
   
@@ -1102,7 +1105,7 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
   # Indicator for NPS given inclusion in stacked sample
   z <- rep(1:0, c(n1, n0))
   
-  # If pi_R known for all
+  # If pi_R known for all (not typically used)
   if (!is.null(hat_pi_R)) {
     # Predict pi_B for i in S_B
     # First predict pi_z
@@ -1127,23 +1130,28 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
     # Add BART model to output
     est_weights$fit_pi_B <- fit_pi_B
     
+    # Get pseudo-weights
+    w_B <- 1 / hat_pi_B
+    w_B_post <- 1 / hat_pi_B_dist
+    
   # If pi_R not known for all, predict pi_R for those in S_B 
   } else {
     
     if (pred_model == "bart") {
       
-      # Predict logit(pi_R) for i in S_B
-      # Changed so that it only predicts for those in S_B rather than all
+      ### Predict logit(pi_R) for i in S_B using wbart
+      
       fit_pi_R <- wbart(x.train = samp_comb[z == 0, pred_covs_R, drop = FALSE],
                         y.train = logit_pi_R,
                         x.test = samp_comb[z == 1, pred_covs_R, drop = FALSE],
                         ntree = 50L, nskip = 100L, ndpost = num_post)
-      hat_logit_pi_R <- fit_pi_R$yhat.test.mean
+      hat_logit_pi_R <- fit_pi_R$yhat.test.mean  # length n1
       # Convert to pi_R scale using expit
-      hat_pi_R <- exp(hat_logit_pi_R) / (1 + exp(hat_logit_pi_R))
-      # Get distribution of hat_pi_R
+      hat_pi_R <- exp(hat_logit_pi_R) / (1 + exp(hat_logit_pi_R))  # length n1
+      # Get distribution of hat_pi_R using expit: num_post x n1
       hat_logit_pi_R_dist <- fit_pi_R$yhat.test
       hat_pi_R_dist <- exp(hat_logit_pi_R_dist) / (1 + exp(hat_logit_pi_R_dist))
+      se_pi_R   <- apply(hat_pi_R_dist, 2, sd)
         
             # # Binary bart model for predicting pi_R for i in S_B
             # fit_pi_R <- pbart(x.train = samp_comb[z == 0, pred_covs_R, drop = FALSE],
@@ -1154,78 +1162,157 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
             # # Get distribution of hat_pi_R
             # hat_pi_R_dist <-  fit_pi_R$yhat.test
       
-      # Predict pi_B for i in S_B
-      fit_pi_B <- pbart(x.train = samp_comb[, pred_covs_B, drop = FALSE],
-                        y.train = z, ntree = 50L, nskip = 100L, ndpost = num_post)
-      hat_pi_z <- fit_pi_B$prob.train.mean
-      hat_pi_B <- hat_pi_z[z == 1] * hat_pi_R * frame_R / 
-        (frame_B * (1 - hat_pi_z[z == 1]))
       
-      # Get distribution of hat_pi_B, incorporating distribution of hat_pi_R
-      hat_pi_z_dist <- fit_pi_B$prob.train
+      ### Predict pi_B for i in S_B using pbart
+      
+      fit_pi_B <- pbart(x.train = samp_comb[, pred_covs_B, drop = FALSE],
+                        y.train = z, 
+                        ntree = 50L, nskip = 100L, ndpost = num_post)
+      hat_pi_z <- fit_pi_B$prob.train.mean  # length n1 + n0
+      
+      
+      ### Get hat_pi_B for i in S_B using CRISP formula 
+      
+      # Get distribution of hat_pi_B using joint draws of pi_z and pi_R
+      hat_pi_z_dist <- fit_pi_B$prob.train  # num_post x (n1 + n0)
       hat_pi_B_dist <- matrix(NA, nrow = num_post, ncol = n1)
-      # hat_pi_B_dist <- vector(mode = "list", length = num_post)
       for (m in 1:num_post) {
-        pi_z_m <- hat_pi_z_dist[m, ]
+        pi_z_m <- hat_pi_z_dist[m, ]  # length n1 + n0
         pi_B_m <- pi_z_m[z == 1] * hat_pi_R_dist[m, ] * frame_R / 
           (frame_B * (1 - pi_z_m[z == 1]))
         # Restrict to [0, 1]
         hat_pi_B_dist[m, ] <- sapply(1:n1, function(x) max(min(pi_B_m[x], 1), 0))
       }
       
-      # Add estimated hat_pi_R distribution to output list
-      est_weights$hat_pi_R_dist <- hat_pi_R_dist
-      # Add BART model to output
-      est_weights$fit_pi_R <- fit_pi_R
-      est_weights$fit_pi_B <- fit_pi_B
+      # Get mean inclusion probability estimate for i in S_B
+      hat_pi_B <- colMeans(hat_pi_B_dist)  # length n1
+      # Get SE and CI for inclusion probabilities for each indiv across BART samples
+      alpha <- 1 - ci_level
+      se_pi_B   <- apply(hat_pi_B_dist, 2, sd)
+      pi_B_low  <- apply(hat_pi_B_dist, 2, quantile, probs = alpha / 2)
+      pi_B_high <- apply(hat_pi_B_dist, 2, quantile, probs = 1 - alpha / 2)
+      
+      # Posterior mean pseudo-weights
+      w_B <- 1 / hat_pi_B 
+      
+      # Pseudo-weight distribution: note this is not centered at w_B due to inverse
+      w_B_post <- 1 / hat_pi_B_dist          # num_post x n1
+      se_w_B <- apply(w_B_post, 2, sd)
+      w_B_low <- apply(w_B_post, 2, quantile, probs = alpha / 2)
+      w_B_high <- apply(w_B_post, 2, quantile, probs = 1 - alpha / 2)
+
       
     } else if (pred_model == "glm") {
       
       ### Predict logit(pi_R) for i in S_B using regression
+      
       # Add logit(pi_R) to data for those in S_R
       glm_data <- cbind(samp_comb[z==0, , drop = FALSE], logit_pi_R)
       form_R <- as.formula(paste0("logit_pi_R ~ ", 
                                    paste0(pred_covs_R, collapse = " + ")))
       fit_pi_R <- lm(form_R, data = glm_data)
-            # fit_pi_R <- lm(form_R, data = samp_comb[z == 0, pred_covs_R, drop = FALSE])
-      hat_logit_pi_R <- predict(fit_pi_R, newdata = samp_comb[z == 1, pred_covs_R, 
-                                                              drop = FALSE])
+      
+      # Get predictions on logit scale, including SE
+      pred_R <- predict(fit_pi_R, 
+                        newdata = samp_comb[z == 1, pred_covs_R, drop = FALSE],
+                        se.fit = TRUE)
+      hat_logit_pi_R <- as.numeric(pred_R$fit)    
+      se_logit_pi_R <- as.numeric(pred_R$se.fit)  
+      
       # Convert to pi_R scale using expit
       hat_pi_R <- exp(hat_logit_pi_R) / (1 + exp(hat_logit_pi_R))
+      # Use delta method to get SE of pi_R
+      se_pi_R <- hat_pi_R * (1 - hat_pi_R) * se_logit_pi_R
       # Distribution of hat_pi_R set to mean
       hat_pi_R_dist <- hat_pi_R
       
-      # Predict pi_B for i in S_B using logistic regression instead of BART
+      
+      ### Predict pi_B for i in S_B using logistic regression instead of BART
+      
       # Add z to data
       glm_data2 <- cbind(samp_comb, z)
       form_B <- as.formula(paste0("z ~ ", 
                                   paste0(pred_covs_B, collapse = " + ")))
+      # Get hat_logit_pi_z w/ SE
       fit_pi_B <- glm(form_B, data = glm_data2, family = binomial())
-      hat_pi_z <- fit_pi_B$fitted.values
+      # Convert to pi_z scale, and get SE of pi_z (uses Delta method internally)
+      pred_B <- predict(fit_pi_B, type = "response", se.fit = TRUE)
+      hat_pi_z <- pred_B$fit
+      se_pi_z <- pred_B$se.fit
+      # Restrict to S_B
+      hat_pi_z_B <- hat_pi_z[z == 1]
+      se_pi_z_B  <- se_pi_z[z == 1]
+      
+      # Get pi_B using CRISP: mean inclusion probabilities for i in S_B
       hat_pi_B <- hat_pi_z[z == 1] * hat_pi_R * frame_R / 
         (frame_B * (1 - hat_pi_z[z == 1]))
-      # Distribution of hat_pi_B set to mean
+      # Dummy distribution of hat_pi_B set to mean: for BART comparison
       hat_pi_B_dist <- hat_pi_B
       
-      # Add model to output
-      est_weights$fit_pi_R <- fit_pi_R
-      est_weights$fit_pi_B <- fit_pi_B
+      # Get SE of pi_B using delta method
+      k  <- frame_R / frame_B
+      pz <- hat_pi_z_B
+      pR <- hat_pi_R
+      # Gradients wrt pz and pR
+      # d g / d pz = k * pR / (1 - pz)^2
+      # d g / d pR = k * pz / (1 - pz)
+      dg_dpz <- k * pR / (1 - pz)^2
+      dg_dpR <- k * pz / (1 - pz)
+      # Get SE of pi_B
+      se_pi_B <- sqrt((dg_dpz^2) * (se_pi_z_B^2) + (dg_dpR^2) * (se_pi_R^2))
+      # 95% CI for pi_B, truncated to [0, 1]
+      alpha <- 1 - ci_level
+      pi_B_low  <- pmax(0, hat_pi_B - abs(qnorm(alpha/2)) * se_pi_B)
+      pi_B_high <- pmin(1, hat_pi_B + abs(qnorm(alpha/2)) * se_pi_B)
+      
+      # Get pseudo-weights and their SE and CI (using Delta method)
+      w_B <- 1 / hat_pi_B   # Mean pseudo-weights
+      w_B_post <- 1 / hat_pi_B_dist  # dummy, uses mean: for BART comparison
+      # d w / d pi_B = -1 / pi_B^2
+      se_w_B <- sqrt((1 / hat_pi_B^2)^2 * se_pi_B^2)
+      # Because 1/x is decreasing, CI for w_B uses reversed pi_B bounds
+      w_B_low  <- 1 / pi_B_high
+      w_B_high <- 1 / pi_B_low
+      
     } else {
       stop("pred_model must be one of `'bart'` or `'glm'`")
     }
+    
+    
+    ### Add model to output
+    est_weights$fit_pi_R <- fit_pi_R
+    est_weights$fit_pi_B <- fit_pi_B
+    
+    # pi_R
+    est_weights$hat_pi_R   <- hat_pi_R
+    est_weights$se_pi_R    <- se_pi_R
+    est_weights$hat_pi_R_dist <- hat_pi_R_dist
+    
+    # pi_B
+    est_weights$hat_pi_B   <- hat_pi_B
+    est_weights$se_pi_B    <- se_pi_B
+    est_weights$pi_B_low   <- pi_B_low
+    est_weights$pi_B_high  <- pi_B_high
+    est_weights$hat_pi_B_dist <- hat_pi_B_dist
+    
+    # weights 
+    est_weights$w_B      <- w_B
+    est_weights$se_w_B   <- se_w_B
+    est_weights$w_B_low  <- w_B_low
+    est_weights$w_B_high <- w_B_high
   }
   
-  # Form pseudo-weights
-  weights <- numeric(length = nrow(samp_comb))
-  weights[z == 1] <- 1 / hat_pi_B
-  weights[z == 0] <- 1 / pi_R
-  wts <- weights[z == 1]
+  #===== Form full weights + weight trimming
   
-  ### Get distribution of weights for variance estimation
-  wts_post <- t(1 / hat_pi_B_dist)
+  # Weights for stacked sample
+  weights <- numeric(length = nrow(samp_comb))
+  weights[z == 1] <- w_B  # Pseudo-weights for i in S_B (NPS)
+  weights[z == 0] <- 1 / pi_R  # (Known) weights for i in S_R (PS)
+  # Transpose posterior samples for weights
+  wts_post <- t(w_B_post)
   
   ### Weight trimming
-  wts <- trim_w(wts, m = trim_method, c = trim_c, max = 10)
+  wts <- trim_w(w_B, m = trim_method, c = trim_c, max = 10)
   wts_post <- apply(wts_post, 2, function(x) trim_w(x, m = trim_method, 
                                                     c = trim_c, max = 10)) 
   
@@ -1237,6 +1324,7 @@ get_weights_bart <- function(dat_B, dat_R, pred_covs_B, pred_covs_R,
   est_weights <- c(list(wts = wts, wts_post = wts_post, 
                         hat_pi_B = hat_pi_B, hat_pi_B_dist = hat_pi_B_dist,
                         hat_pi_R = hat_pi_R), est_weights)
+  
   
   return(est_weights)
 }

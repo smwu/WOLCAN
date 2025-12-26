@@ -147,29 +147,46 @@ if (already_done) {
   } else if (scenario == 23) {  # Use logistic regression to predict pseudo-weights
     pred_model <- "glm"
     wts_adj <- "WS mean"  # WS one-step adjustment, b/c no weights distribution
-  } else if (scenario == 24) {
+  } else if (scenario %in% c(24, 25)) {
     # Covariates to predict NPS and RS selection
     pred_covs_B <- c("age", "sex_f_num", "educ_num", "hhinc_num", "ethn_num")  
     pred_covs_R <- c("age", "sex_f_num", "educ_num", "hhinc_num", "ethn_num")  
+  } else if (scenario == 26) {
+    # Get true weights for NPS
+    wts_true <- 1 / sim_samp_B$true_pi_B
   }
   
   ### Run weighted model
-  res <- wolcan(x_mat = x_mat, dat_B = dat_B, dat_R = dat_R, 
-                pred_model = pred_model, pred_covs_B = pred_covs_B, 
-                pred_covs_R = pred_covs_R, 
-                pi_R = pi_R, hat_pi_R = hat_pi_R, num_post = num_post, 
-                frame_B = frame_B, frame_R = frame_R, trim_method = trim_method, 
-                trim_c = trim_c, D = D, parallel = parallel, n_cores = n_cores,
-                wts_adj = wts_adj, wts_quantile = wts_quantile, 
-                adjust = adjust, tol = tol, 
-                num_reps = num_reps, run_adapt = run_adapt, 
-                K_max = K_max, adapt_seed = adapt_seed, K_fixed = NULL, 
-                fixed_seed = fixed_seed, class_cutoff = 0.05, 
-                n_runs = n_runs, burn = burn, thin = thin, update = update, 
-                save_res = TRUE, save_res_d = FALSE, save_path = save_path)
+  if (scenario != 26) {
+    res <- wolcan(x_mat = x_mat, dat_B = dat_B, dat_R = dat_R, 
+                  pred_model = pred_model, pred_covs_B = pred_covs_B, 
+                  pred_covs_R = pred_covs_R, 
+                  pi_R = pi_R, hat_pi_R = hat_pi_R, num_post = num_post, 
+                  frame_B = frame_B, frame_R = frame_R, trim_method = trim_method, 
+                  trim_c = trim_c, D = D, parallel = parallel, n_cores = n_cores,
+                  wts_adj = wts_adj, wts_quantile = wts_quantile, 
+                  adjust = adjust, tol = tol, 
+                  num_reps = num_reps, run_adapt = run_adapt, 
+                  K_max = K_max, adapt_seed = adapt_seed, K_fixed = NULL, 
+                  fixed_seed = fixed_seed, class_cutoff = 0.05, 
+                  n_runs = n_runs, burn = burn, thin = thin, update = update, 
+                  save_res = TRUE, save_res_d = FALSE, save_path = save_path)
+  } else {
+    # For scenario 26, run WOLCA with true weights and no weight variability
+    res <- wolca(x_mat = x_mat, sampling_wt = wts_true, 
+                      run_sampler = "both", K_max = K_max, 
+                      adapt_seed = adapt_seed, class_cutoff = 0.05, 
+                      n_runs = n_runs, burn = burn, thin = thin, 
+                      update = update, save_res = TRUE, 
+                      save_path = save_path)
+    # Apply adjustment for pseudo-likelihood
+    res <- wolca_var_adjust(res = res, num_reps = 100, save_res = TRUE, 
+                            save_path = save_path, adjust_seed = samp_i)
+  }
+  
   
   ### Run unweighted model
-  if (scenario %in% c(0, 1, 7:11, 18:19, 24)) {
+  if (scenario %in% c(0, 1, 7:11, 18:19, 24:25)) {
     res_unwt <- wolca(x_mat = x_mat, sampling_wt = rep(1, nrow(x_mat)), 
                              run_sampler = "both", K_max = K_max, 
                              adapt_seed = adapt_seed, class_cutoff = 0.05, 
